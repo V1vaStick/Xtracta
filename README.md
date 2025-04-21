@@ -5,6 +5,7 @@ An open-source XPath playground built with React 19 + TypeScript + Tailwind CSS 
 ## Features
 
 - XML/HTML source editor with syntax highlighting & line numbers
+- Advanced HTML/XML formatting using WebAssembly-powered formatter
 - XPath input box with history, auto-complete and validation
 - Evaluate XPath expressions with results display
 - Synchronized inline highlights of matched nodes
@@ -68,4 +69,5 @@ MIT
 - [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/)
-- [Express](https://expressjs.com/) 
+- [Express](https://expressjs.com/)
+- [wasm-fmt/web_fmt](https://github.com/wasm-fmt/web_fmt) - WebAssembly-powered HTML/XML formatter 

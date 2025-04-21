@@ -10,7 +10,7 @@ Node.js 20 LTS + Express on the backend.
 General rules  
 - Write all new code in **TypeScript ESM**.  
 - Follow **Conventional Commits** for messages (feat:, fix:, refactor:, docs:)  
-- Use **Prettier defaults** (printWidth = 100) and **eslint‑airbnb‑typescript**.  
+- Use **Prettier defaults** (printWidth = 100).  
 - Favour functional programming & immutability where practical.  
 - Include JSDoc/TSdoc for every exported function or component.  
 

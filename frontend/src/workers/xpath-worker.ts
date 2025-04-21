@@ -1,135 +1,154 @@
-/* eslint-disable no-restricted-globals */
-import * as xpath from 'fontoxpath';
+/**
+ * Web Worker for evaluating XPath expressions using FontoXPath and slimdom
+ */
+import * as fontoxpath from 'fontoxpath';
+import { DOMParser } from '@xmldom/xmldom';
 
-// Define message types
-interface EvaluateMessage {
-  type: 'evaluate';
-  content: string;
-  xpathExpression: string;
-  isHtml: boolean;
-}
+// Create DOM node type constants since they might not be available in the worker context
+const NODE_TYPES = {
+  ELEMENT_NODE: 1,
+  ATTRIBUTE_NODE: 2,
+  TEXT_NODE: 3,
+  CDATA_SECTION_NODE: 4,
+  PROCESSING_INSTRUCTION_NODE: 7,
+  COMMENT_NODE: 8,
+  DOCUMENT_NODE: 9,
+  DOCUMENT_TYPE_NODE: 10,
+  DOCUMENT_FRAGMENT_NODE: 11,
+};
 
-interface ResultMessage {
-  type: 'result';
-  matches: Array<{
-    value: string;
-    path: string;
-    startOffset?: number;
-    endOffset?: number;
-  }>;
-  count: number;
-  executionTime: number;
-}
+// Worker message handlers
+self.onmessage = async (event: MessageEvent) => {
+  const { type, content, xpathExpression, isHtml } = event.data;
 
-interface ErrorMessage {
-  type: 'error';
-  error: string;
-}
+  if (type === 'evaluate') {
+    try {
+      const startTime = performance.now();
+      const result = evaluateXPath(content, xpathExpression, isHtml);
+      const endTime = performance.now();
 
-type WorkerMessage = EvaluateMessage;
-type WorkerResponse = ResultMessage | ErrorMessage;
-
-// Setup event listener for messages
-self.addEventListener('message', (event: MessageEvent<WorkerMessage>) => {
-  const message = event.data;
-
-  if (message.type === 'evaluate') {
-    evaluateXPath(message.content, message.xpathExpression, message.isHtml);
+      // Send results back to main thread
+      self.postMessage({
+        type: 'result',
+        matches: result.matches,
+        count: result.count,
+        nodeTypes: result.nodeTypes,
+        executionTime: endTime - startTime,
+      });
+    } catch (error: any) {
+      self.postMessage({
+        type: 'error',
+        error: error.message || 'Unknown error evaluating XPath',
+      });
+    }
   }
-});
+};
+
+interface MatchResult {
+  value: string;
+  nodeType?: number;
+  nodeName?: string;
+  startOffset?: number;
+  endOffset?: number;
+}
 
 /**
  * Evaluates an XPath expression against XML/HTML content
  */
-async function evaluateXPath(content: string, xpathExpression: string, isHtml: boolean) {
-  try {
-    const startTime = performance.now();
+function evaluateXPath(
+  content: string,
+  xpathExpression: string,
+  isHtml: boolean,
+): {
+  matches: Array<MatchResult>;
+  count: number;
+  nodeTypes: Record<string, number>;
+} {
+  const HTML_NS = 'http://www.w3.org/1999/xhtml';
+  // Define namespace resolver function
+  const namespaceResolver = (prefix: string): string | null => {
+    // Return HTML namespace for all prefixes for better compatibility
+    return HTML_NS;
+  };
 
-    // Parse content
-    const parser = new DOMParser();
-    const contentType = isHtml ? 'text/html' : 'text/xml';
-    const doc = parser.parseFromString(content, contentType);
+  // Parse the content to a DOM document
+  const mimeType = isHtml ? 'text/html' : 'application/xml';
+  const document = new DOMParser().parseFromString(content, mimeType);
 
-    // Evaluate XPath
-    const evaluateOptions = {
-      namespaceResolver: xpath.evaluateXPath.ANY_NAMESPACE,
+  // Evaluate the XPath to get nodes directly - skip type detection for performance
+  const matchingNodes = fontoxpath.evaluateXPathToNodes(xpathExpression, document, null, null, {
+    namespaceResolver,
+  });
+
+  // Keep track of node types found
+  const nodeTypes: Record<string, number> = {};
+
+  // Extract values from matching nodes
+  const matches = matchingNodes.map((node: any) => {
+    // Count node types
+    const nodeType = node.nodeType || 0;
+    const typeName = getNodeTypeName(nodeType);
+    nodeTypes[typeName] = (nodeTypes[typeName] || 0) + 1;
+    
+    return {
+      value: extractNodeValue(node),
+      nodeType: nodeType,
+      nodeName: node.nodeName || '',
     };
+  });
 
-    const nodes = xpath.evaluateXPath(
-      xpathExpression,
-      doc,
-      null,
-      xpath.evaluateXPath.ANY_TYPE,
-      evaluateOptions
-    ) as Node[];
+  return {
+    matches,
+    count: matches.length,
+    nodeTypes,
+  };
+}
 
-    // Process results
-    const matches = Array.isArray(nodes)
-      ? nodes.map(node => {
-          const nodeValue = (node as Element).outerHTML || node.textContent || '';
-          const nodePath = getNodePath(node);
-          
-          // Attempt to find the node position in the original content
-          // This is a simplified implementation and might not be precise
-          const startOffset = content.indexOf(nodeValue);
-          const endOffset = startOffset + nodeValue.length;
-          
-          return {
-            value: nodeValue,
-            path: nodePath,
-            startOffset: startOffset >= 0 ? startOffset : undefined,
-            endOffset: startOffset >= 0 ? endOffset : undefined,
-          };
-        })
-      : [];
-
-    const executionTime = performance.now() - startTime;
-
-    // Send results back to main thread
-    const response: ResultMessage = {
-      type: 'result',
-      matches,
-      count: matches.length,
-      executionTime,
-    };
-
-    self.postMessage(response);
-  } catch (error: any) {
-    const errorResponse: ErrorMessage = {
-      type: 'error',
-      error: error.message || 'Unknown error evaluating XPath',
-    };
-    self.postMessage(errorResponse);
+/**
+ * Extract appropriate string value from a node based on its type
+ */
+function extractNodeValue(node: any): string {
+  switch (node.nodeType) {
+    case NODE_TYPES.ELEMENT_NODE:
+      return node.outerHTML || node.toString();
+    case NODE_TYPES.TEXT_NODE:
+    case NODE_TYPES.CDATA_SECTION_NODE:
+      return node.nodeValue || '';
+    case NODE_TYPES.ATTRIBUTE_NODE:
+      return node.value || '';
+    case NODE_TYPES.COMMENT_NODE:
+      return `<!--${node.nodeValue || ''}-->`;
+    case NODE_TYPES.PROCESSING_INSTRUCTION_NODE:
+      return `<?${node.target || ''} ${node.nodeValue || ''}?>`;
+    default:
+      return node.toString();
   }
 }
 
 /**
- * Gets the XPath expression for a node
+ * Get node type name from its numeric type
  */
-function getNodePath(node: Node): string {
-  // This is a simplified implementation
-  const paths: string[] = [];
-  let current: Node | null = node;
-  
-  while (current && current.nodeType === Node.ELEMENT_NODE) {
-    let index = 1;
-    let sibling: Node | null = current.previousSibling;
-    
-    while (sibling) {
-      if (sibling.nodeType === Node.ELEMENT_NODE && 
-          sibling.nodeName === current.nodeName) {
-        index++;
-      }
-      sibling = sibling.previousSibling;
-    }
-    
-    const tagName = (current as Element).tagName.toLowerCase();
-    paths.unshift(`${tagName}[${index}]`);
-    current = current.parentNode;
+function getNodeTypeName(nodeType: number): string {
+  switch (nodeType) {
+    case NODE_TYPES.ELEMENT_NODE:
+      return 'ELEMENT_NODE';
+    case NODE_TYPES.ATTRIBUTE_NODE:
+      return 'ATTRIBUTE_NODE';
+    case NODE_TYPES.TEXT_NODE:
+      return 'TEXT_NODE';
+    case NODE_TYPES.CDATA_SECTION_NODE:
+      return 'CDATA_SECTION_NODE';
+    case NODE_TYPES.PROCESSING_INSTRUCTION_NODE:
+      return 'PROCESSING_INSTRUCTION_NODE';
+    case NODE_TYPES.COMMENT_NODE:
+      return 'COMMENT_NODE';
+    case NODE_TYPES.DOCUMENT_NODE:
+      return 'DOCUMENT_NODE';
+    case NODE_TYPES.DOCUMENT_TYPE_NODE:
+      return 'DOCUMENT_TYPE_NODE';
+    case NODE_TYPES.DOCUMENT_FRAGMENT_NODE:
+      return 'DOCUMENT_FRAGMENT_NODE';
+    default:
+      return 'UNKNOWN_NODE';
   }
-  
-  return paths.length ? `/${paths.join('/')}` : '/';
 }
-
-// Export an empty object to make TypeScript happy with the module format
-export {}; 

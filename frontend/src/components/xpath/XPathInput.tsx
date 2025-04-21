@@ -46,9 +46,6 @@ const XPathInput = () => {
     try {
       setIsEvaluating(true);
       setError(null);
-
-      console.log('Evaluating XPath:', xpath);
-
       // Use our evaluation service
       const result = await evaluateXPath(content, xpath, true);
       
@@ -104,7 +101,6 @@ const XPathInput = () => {
     if (xpath) {
       navigator.clipboard.writeText(xpath).then(() => {
         // Optional: Add a temporary visual feedback
-        console.log('XPath copied to clipboard');
       }).catch(err => {
         console.error('Failed to copy XPath: ', err);
       });
@@ -219,6 +215,8 @@ const XPathInput = () => {
       </div>
       <div className="mt-3 text-xs text-muted-foreground">
         💡 Tip: Press <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Ctrl</kbd>+<kbd className="bg-muted px-1.5 py-0.5 rounded-md border border-border">Enter</kbd> to evaluate
+        <span className="mx-2">•</span>
+        Hold <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Ctrl</kbd> or <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Cmd</kbd> and click on elements to generate a precise XPath
       </div>
     </div>
   );

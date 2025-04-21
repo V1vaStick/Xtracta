@@ -11,9 +11,9 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div className="flex flex-col min-h-screen min-w-screen text-foreground p-4">
+    <div className="flex flex-col min-h-screen h-screen w-full overflow-hidden text-foreground p-4">
       <Header />
-      <main className="flex flex-1 p-4">
+      <main className="flex flex-1 p-4 overflow-hidden">
         {children}
       </main>
       <Footer />

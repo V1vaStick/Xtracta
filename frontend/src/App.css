@@ -5,6 +5,50 @@
   text-align: center;
 } */
 
+/* Base app styles */
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent scrolling at the root level */
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.results-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden; /* Hide overflow on the container */
+  min-height: 0; /* Critical for proper flex child behavior */
+}
+
+.results-scrollable {
+  flex: 1;
+  overflow: auto;
+}
+
+.result-item {
+  width: 100%;
+  overflow-wrap: break-word;
+}
+
+.result-value {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Override any Tailwind height classes that might be causing issues */
+.h-full {
+  height: 100% !important;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

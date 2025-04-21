@@ -5,11 +5,13 @@
 interface XPathResult {
   matches: Array<{
     value: string;
-    path: string;
+    nodeType?: number;
+    nodeName?: string;
     startOffset?: number;
     endOffset?: number;
   }>;
   count: number;
+  nodeTypes?: Record<string, number>;
   executionTime: number;
 }
 
@@ -57,45 +59,10 @@ const evaluateWithWorker = (
     try {
       // Initialize worker if not already created
       if (!worker) {
-        // In a real implementation, we would use a proper worker build process
-        // For simplicity in this demo, we're creating a mock worker
-        const mockWorker = {
-          postMessage: (message: any) => {
-            // Mock worker message processing
-            setTimeout(() => {
-              // Mock evaluation result
-              const startPos = content.indexOf('<div');
-              const endPos = content.indexOf('</div>') + 6;
-              
-              const mockResult = {
-                type: 'result',
-                matches: [
-                  {
-                    value: content.substring(startPos, endPos),
-                    path: '/html/body/div[1]',
-                    startOffset: startPos,
-                    endOffset: endPos
-                  }
-                ],
-                count: 1,
-                executionTime: 42
-              };
-              
-              // Dispatch mock message event
-              const mockEvent = new MessageEvent('message', {
-                data: mockResult
-              });
-              
-              if (mockWorker.onmessage) {
-                mockWorker.onmessage(mockEvent);
-              }
-            }, 200);
-          },
-          onmessage: null as ((event: MessageEvent) => void) | null,
-          terminate: () => {}
-        };
-        
-        worker = mockWorker as unknown as Worker;
+        // Create a new web worker
+        worker = new Worker(new URL('../workers/xpath-worker.ts', import.meta.url), {
+          type: 'module'
+        });
       }
 
       // Set up message handler

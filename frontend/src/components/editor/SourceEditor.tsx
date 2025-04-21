@@ -1,19 +1,35 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Editor } from '@monaco-editor/react';
-import { editor } from 'monaco-editor';
+import { editor as monacoEditor } from 'monaco-editor';
+import * as monaco from 'monaco-editor';
 import { useEditorStore } from '../../store/editorStore';
+import ClickToXPathProvider from './ClickToXPathProvider';
+import { formatHtmlOrXml, fallbackFormatter, clearFormatterCache, terminateFormatterWorker } from '../../utils/formatters/html-formatter';
+
+// Define a type for editor selections to avoid importing internal monaco types
+interface EditorSelection {
+  startLineNumber: number;
+  startColumn: number;
+  endLineNumber: number;
+  endColumn: number;
+}
 
 /**
  * Source Editor component for XML/HTML documents
  */
 const SourceEditor = () => {
-  const { content, setContent, isPrettyPrinted, results, selectedResultIndex } = useEditorStore();
-  const [editorInstance, setEditorInstance] = useState<editor.IStandaloneCodeEditor | null>(null);
+  const { content, setContent, results, selectedResultIndex } = useEditorStore();
+  const [editorInstance, setEditorInstance] = useState<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const [isFormatting, setIsFormatting] = useState(false);
+  const [lastSelectionState, setLastSelectionState] = useState<EditorSelection | null>(null);
+  const formatButtonRef = useRef<HTMLButtonElement>(null);
+  const openFileRef = useRef<HTMLButtonElement>(null);
+  const [formatPerformance, setFormatPerformance] = useState<{time: number, size: number} | null>(null);
 
   /**
    * Handle editor mount
    */
-  const handleEditorDidMount = useCallback((editor: editor.IStandaloneCodeEditor) => {
+  const handleEditorDidMount = useCallback((editor: monacoEditor.IStandaloneCodeEditor) => {
     setEditorInstance(editor);
 
     // Load sample content if editor is empty
@@ -73,60 +89,103 @@ const SourceEditor = () => {
         editor.setValue(sampleContent);
       }
     }
+
+    // Add keyboard shortcuts for formatting
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+      () => {
+        handleFormatXml();
+      }
+    );
+    
+    // Make editor instance available to window for testing
+    if (typeof window !== 'undefined') {
+      (window as any).editorInstance = editor;
+    }
   }, [content, setContent]);
 
   /**
-   * Simple XML formatter
+   * Save selection state before formatting
    */
-  const formatXml = (xml: string): string => {
-    // Simple XML formatting function
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xml, 'text/xml');
-    
-    // Use browser's XML serializer for formatting
-    const serializer = new XMLSerializer();
-    const xmlString = serializer.serializeToString(xmlDoc);
-    
-    // Use a simple indentation approach
-    return xmlString
-      .replace(/></g, '>\n<')
-      .split('\n')
-      .map((line, index, arr) => {
-        // Determine indentation level
-        const indentLevel = arr
-          .slice(0, index)
-          .reduce((acc, curr) => {
-            const opens = (curr.match(/<[^/]/g) || []).length;
-            const closes = (curr.match(/<\//g) || []).length;
-            return acc + (opens - closes);
-          }, 0);
-        
-        return ' '.repeat(indentLevel * 2) + line.trim();
-      })
-      .join('\n');
-  };
+  const saveSelectionState = useCallback(() => {
+    if (editorInstance) {
+      const selection = editorInstance.getSelection();
+      if (selection) {
+        setLastSelectionState({
+          startLineNumber: selection.startLineNumber,
+          startColumn: selection.startColumn,
+          endLineNumber: selection.endLineNumber,
+          endColumn: selection.endColumn
+        });
+      }
+    }
+  }, [editorInstance]);
+
+  /**
+   * Restore selection after formatting
+   */
+  const restoreSelectionState = useCallback(() => {
+    if (editorInstance && lastSelectionState) {
+      editorInstance.setSelection({
+        startLineNumber: lastSelectionState.startLineNumber,
+        startColumn: lastSelectionState.startColumn,
+        endLineNumber: lastSelectionState.endLineNumber,
+        endColumn: lastSelectionState.endColumn
+      });
+      editorInstance.revealPositionInCenter({
+        lineNumber: lastSelectionState.startLineNumber,
+        column: lastSelectionState.startColumn
+      });
+      editorInstance.focus();
+    }
+  }, [editorInstance, lastSelectionState]);
 
   /**
    * Format the current content
    */
-  const formatDocument = useCallback(() => {
-    if (editorInstance) {
-      const formatted = formatXml(content);
-      editorInstance.setValue(formatted);
-      setContent(formatted);
-    }
-  }, [content, editorInstance, setContent]);
-
-  /**
-   * Update content when isPrettyPrinted changes
-   */
-  useEffect(() => {
+  const formatDocument = useCallback(async () => {
     if (editorInstance && content) {
-      if (isPrettyPrinted) {
-        formatDocument();
+      try {
+        setIsFormatting(true);
+        saveSelectionState();
+        
+        const startTime = performance.now();
+        
+        // Attempt to use the enhanced formatter first with HTML mode
+        const formatted = await formatHtmlOrXml(content, true);
+        
+        const endTime = performance.now();
+        setFormatPerformance({
+          time: endTime - startTime,
+          size: content.length
+        });
+        
+        editorInstance.setValue(formatted);
+        setContent(formatted);
+        
+        // Restore cursor position after formatting
+        setTimeout(() => {
+          restoreSelectionState();
+        }, 50);
+      } catch (error) {
+        console.error('Error formatting document:', error);
+      } finally {
+        setIsFormatting(false);
       }
     }
-  }, [isPrettyPrinted, content, editorInstance, formatDocument]);
+  }, [content, editorInstance, setContent, saveSelectionState, restoreSelectionState]);
+
+  /**
+   * Clean up resources when component unmounts
+   */
+  useEffect(() => {
+    // Return cleanup function
+    return () => {
+      console.log('SourceEditor unmounting, cleaning up resources');
+      // Terminate the formatter worker when component unmounts
+      terminateFormatterWorker();
+    };
+  }, []);
 
   /**
    * Highlight results in the editor
@@ -152,20 +211,73 @@ const SourceEditor = () => {
     }
   }, [results, selectedResultIndex, editorInstance]);
 
+  /**
+   * Clean up performance stats after a delay
+   */
+  useEffect(() => {
+    if (formatPerformance) {
+      const timer = setTimeout(() => {
+        setFormatPerformance(null);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [formatPerformance]);
+
   const handleOpenFile = () => {
     // Implement file opening logic
     console.log('Open file clicked');
   };
 
-  const handleFormatXml = () => {
-    if (!content) return;
+  const handleFormatXml = async () => {
+    if (!content || isFormatting) return;
 
     try {
-      // Basic XML formatting
-      const formattedXml = formatXml(content);
+      setIsFormatting(true);
+      saveSelectionState();
+      
+      const startTime = performance.now();
+      
+      // Use the enhanced formatter with wasm-fmt
+      const formattedXml = await formatHtmlOrXml(content, true);
+      
+      const endTime = performance.now();
+      setFormatPerformance({
+        time: endTime - startTime,
+        size: content.length
+      });
+      
       setContent(formattedXml);
+      if (editorInstance) {
+        editorInstance.setValue(formattedXml);
+      }
+      
+      // Restore cursor position after formatting
+      setTimeout(() => {
+        restoreSelectionState();
+      }, 50);
     } catch (error) {
-      console.error('Error formatting XML:', error);
+      console.error('Error formatting HTML/XML:', error);
+      // Fallback to the basic formatter if the enhanced one fails
+      try {
+        saveSelectionState();
+        const formattedXml = fallbackFormatter(content);
+        setContent(formattedXml);
+        if (editorInstance) {
+          editorInstance.setValue(formattedXml);
+        }
+        setTimeout(() => {
+          restoreSelectionState();
+        }, 50);
+      } catch (fallbackError) {
+        console.error('Error in fallback formatter:', fallbackError);
+      }
+    } finally {
+      setIsFormatting(false);
+      // Focus on the format button for better keyboard accessibility
+      if (formatButtonRef.current) {
+        formatButtonRef.current.focus();
+      }
     }
   };
 
@@ -176,15 +288,22 @@ const SourceEditor = () => {
   }, [setContent]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       <div className="flex justify-between items-center mb-4">
         <div className="flex space-x-2 items-center">
           <h2 className="text-xl font-bold text-foreground">Input HTML/XML</h2>
+          {formatPerformance && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Formatted {(formatPerformance.size / 1024).toFixed(1)}KB in {formatPerformance.time.toFixed(1)}ms
+            </span>
+          )}
         </div>
         <div className="flex items-center space-x-3">
           <button
+            ref={openFileRef}
             onClick={handleOpenFile}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 flex items-center space-x-2"
+            aria-label="Open File"
           >
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
@@ -195,6 +314,7 @@ const SourceEditor = () => {
               strokeLinecap="round" 
               strokeLinejoin="round" 
               className="h-5 w-5"
+              aria-hidden="true"
             >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -203,27 +323,64 @@ const SourceEditor = () => {
             <span>Open File</span>
           </button>
           <button
+            ref={formatButtonRef}
             onClick={handleFormatXml}
             className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all duration-200 flex items-center space-x-2"
-            disabled={!content}
+            disabled={!content || isFormatting}
+            aria-label={isFormatting ? "Formatting HTML/XML..." : "Format HTML"}
+            title="Format HTML (Ctrl+Shift+F)"
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              className="h-5 w-5"
-            >
-              <polyline points="16 3 21 8 8 21 3 21 3 16 16 3"></polyline>
-            </svg>
-            <span>Format XML</span>
+            {isFormatting ? (
+              <>
+                <svg 
+                  className="animate-spin -ml-1 mr-2 h-5 w-5" 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle 
+                    className="opacity-25" 
+                    cx="12" 
+                    cy="12" 
+                    r="10" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                  />
+                  <path 
+                    className="opacity-75" 
+                    fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                <span>Formatting...</span>
+              </>
+            ) : (
+              <>
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <polyline points="16 3 21 8 8 21 3 21 3 16 16 3"></polyline>
+                </svg>
+                <span>Format HTML</span>
+              </>
+            )}
           </button>
         </div>
       </div>
-      <div className="border border-input rounded-lg overflow-hidden h-full">
+      <div 
+        className="border border-input rounded-lg overflow-hidden h-full relative"
+        role="region"
+        aria-label="HTML/XML Editor"
+      >
         <Editor
           height="100%"
           width="100%"
@@ -236,7 +393,6 @@ const SourceEditor = () => {
             selectOnLineNumbers: true,
             roundedSelection: false,
             minimap: { enabled: false },
-            wordWrap: 'on',
             readOnly: false,
             cursorStyle: 'line',
             automaticLayout: true,
@@ -246,8 +402,12 @@ const SourceEditor = () => {
             glyphMargin: true,
             folding: true,
             fontSize: 14,
-          } as editor.IEditorOptions}
+            accessibilitySupport: 'on',
+            tabIndex: 0,
+          } as monacoEditor.IEditorOptions}
+          aria-label="HTML/XML code editor"
         />
+        <ClickToXPathProvider editorInstance={editorInstance} />
       </div>
     </div>
   );
