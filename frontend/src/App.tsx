@@ -7,19 +7,15 @@ import './App.css';
 function App() {
   return (
     <Layout>
-      <div className="h-screen w-full p-6 bg-background">
-        <div className="grid h-full w-full grid-cols-2 grid-rows-[auto_1fr] gap-6 rounded-2xl border border-muted/50 p-6 shadow-sm">
+      <div className="w-full">
+        <div className="grid h-full w-full grid-cols-2 grid-rows-[auto_1fr] gap-6 rounded-3xl bg-card p-4 shadow-xl">
           <XPathInput />
-          <div className="col-start-2 row-span-2 row-start-1 flex flex-col rounded-xl border border-muted p-4 overflow-auto">
-            <h2 className="mb-2 text-base font-semibold">Evaluation result</h2>
+          <div className="col-start-2 row-span-2 row-start-1 flex flex-col rounded-2xl p-6 overflow-auto shadow-md">
+            <h2 className="mb-4 text-xl font-bold text-foreground">Evaluation Result</h2>
             <ResultsPanel />
-
-            <pre className="flex-1 whitespace-pre-wrap font-mono text-sm text-muted-foreground">{/* ...results here... */}</pre>
           </div>
           <SourceEditor />
-
         </div>
-
       </div>
     </Layout>
   );
