@@ -259,8 +259,6 @@ This document outlines the implementation plan for Xtracta, an open-source XPath
   - [ ] Create test helpers
 - [ ] Create unit tests
   - [ ] Test core evaluation functions
-  - [ ] Test UI components
-  - [ ] Test state management
 - [ ] Implement integration tests
   - [ ] Set up Cypress
   - [ ] Create end-to-end test scenarios
