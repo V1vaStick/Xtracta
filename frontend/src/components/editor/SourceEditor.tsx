@@ -479,6 +479,10 @@ const SourceEditor = () => {
             fontSize: 14,
             accessibilitySupport: 'on',
             tabIndex: 0,
+            renderIndentGuides: false,
+            renderWhitespace:   'none',
+            links:              false,
+            occurrencesHighlight: 'off'
           } as monacoEditor.IEditorOptions}
           aria-label="HTML/XML code editor"
         />

@@ -1,11 +1,36 @@
-import { useEffect, useState, useRef } from 'react';
-import { editor } from 'monaco-editor';
-import { useEditorStore } from '../../store/editorStore';
+/**
+ * Web Worker for handling click-to-XPath functionality
+ * Moves heavy computation off the main thread to prevent UI freezing
+ * with large HTML documents.
+ */
+import { DOMParser } from '@xmldom/xmldom';
+
+// Define types
+interface ElementMatch {
+  tagName: string;
+  attributes: Record<string, string>;
+  startIndex: number;
+  endIndex: number;
+}
+
+interface ClickRequest {
+  id: number; // To handle race conditions
+  content: string;
+  lineNumber: number;
+  column: number;
+  clickedLine: string;
+  approximatePosition: number;
+  surroundingLines?: string;
+}
+
+// Define DOM types for xmldom (different from browser DOM)
+type XmlDomDocument = ReturnType<DOMParser['parseFromString']>;
+type XmlDomElement = XmlDomDocument['documentElement'];
 
 /**
  * Helper function to find element at a specific position in a line
  */
-const findElementAtPosition = (line: string, column: number): { tagName: string; attributes: Record<string, string>; startIndex: number; endIndex: number } | null => {
+const findElementAtPosition = (line: string, column: number): ElementMatch | null => {
   // Improved regex to better capture HTML/XML tags, including self-closing tags and tags with complex attributes
   const tagRegex = /<([a-zA-Z0-9_:-]+)([^>]*?)(\/?)>/g;
   let match;
@@ -31,7 +56,6 @@ const findElementAtPosition = (line: string, column: number): { tagName: string;
         }
       }
       
-      console.log('Found element at position:', { tagName, attributes, start: startIndex, end: endIndex });
       return { tagName, attributes, startIndex, endIndex };
     }
   }
@@ -44,49 +68,27 @@ const findElementAtPosition = (line: string, column: number): { tagName: string;
     
     if (column >= startIndex && column <= endIndex) {
       const tagName = match[1];
-      console.log('Found closing tag:', { tagName, start: startIndex, end: endIndex });
       return { tagName, attributes: {}, startIndex, endIndex };
     }
   }
   
-  console.log('No element found at position', column, 'in line:', line);
   return null;
-};
-
-/**
- * Helper function to calculate the approximate position of an element in the original source
- */
-const calculateElementPosition = (model: editor.ITextModel, lineNumber: number, column: number): number => {
-  let position = 0;
-  
-  // Add up lengths of all previous lines
-  for (let i = 1; i < lineNumber; i++) {
-    position += model.getLineContent(i).length + 1; // +1 for newline
-  }
-  
-  // Add column position in current line
-  position += column;
-  
-  return position;
 };
 
 /**
  * Helper function to find element in parsed DOM that matches the clicked location in source
  */
 const findElementInDocument = (
-  doc: Document, 
+  doc: XmlDomDocument, 
   tagName: string, 
   attributes: Record<string, string>,
   sourceContent: string,
   approximateSourcePosition: number
-): Element | null => {
-  console.log('Finding element in document:', { tagName, attributes, approximateSourcePosition });
-  
+): XmlDomElement | null => {
   // First try to find by ID if available
   if (attributes.id) {
     const elementById = doc.getElementById(attributes.id);
     if (elementById && elementById.tagName.toLowerCase() === tagName.toLowerCase()) {
-      console.log('Found element by ID:', attributes.id, elementById);
       return elementById;
     }
   }
@@ -98,7 +100,6 @@ const findElementInDocument = (
   
   // Get all elements of this tag type
   const elements = Array.from(doc.getElementsByTagName(tagName));
-  console.log(`Found ${elements.length} potential ${tagName} elements`);
   
   if (elements.length === 0) {
     return null;
@@ -128,12 +129,11 @@ const findElementInDocument = (
   });
   
   if (matchingElements.length === 1) {
-    console.log('Found unique element by attributes:', matchingElements[0]);
     return matchingElements[0];
   }
   
   // Score each element based on multiple criteria
-  type ScoredElement = { element: Element; score: number };
+  type ScoredElement = { element: XmlDomElement; score: number };
   const scoredElements: ScoredElement[] = [];
   
   // Use the selection of elements we've filtered down to, or all of them if we have no filtered set
@@ -144,7 +144,7 @@ const findElementInDocument = (
     
     // 1. Build the ancestral path to help with identification
     const ancestorPath: string[] = [];
-    let current: Element | null = element;
+    let current: XmlDomElement | null = element;
     
     while (current) {
       // Get tag and class names for better context
@@ -160,7 +160,7 @@ const findElementInDocument = (
         ancestorPath[0] += `:contains("${textContent}")`;
       }
       
-      current = current.parentElement;
+      current = current.parentElement as XmlDomElement | null;
     }
     
     // 2. Create a full context path from the ancestry
@@ -219,7 +219,7 @@ const findElementInDocument = (
     }
     
     // Direct element context
-    const elementOuterHtml = element.outerHTML.toLowerCase();
+    const elementOuterHtml = element?.toString().toLowerCase() || '';
     const immediateContextRegex = new RegExp(`<[^>]*${tagName.toLowerCase()}[^>]*>([^<]{0,50})`, 'i');
     const immediateMatch = immediateContextRegex.exec(contextWindow);
     
@@ -244,9 +244,9 @@ const findElementInDocument = (
     
     // Nearest ancestor with an ID is likely the most relevant container
     const nearestParentWithId = findNearestParentWithId(element);
-    if (nearestParentWithId && nearestParentWithId.id === 'content') {
+    if (nearestParentWithId && nearestParentWithId.getAttribute('id') === 'content') {
       score += 25; // Strongly prefer elements in the content area
-    } else if (nearestParentWithId && nearestParentWithId.id === 'root') {
+    } else if (nearestParentWithId && nearestParentWithId.getAttribute('id') === 'root') {
       score += 5; // Root is less specific but still useful
     }
     
@@ -255,99 +255,84 @@ const findElementInDocument = (
       score += 10;
     }
     
-    scoredElements.push({ element, score });
+    // Only add the element to scored elements if it's not null
+    if (element) {
+      scoredElements.push({ element, score });
+    }
   }
   
   // Sort by score descending and get the best match
   scoredElements.sort((a, b) => b.score - a.score);
   
   if (scoredElements.length > 0) {
-    console.log('Element scores:', scoredElements.map(e => ({ 
-      element: e.element.tagName, 
-      score: e.score, 
-      path: getElementPath(e.element)
-    })));
-    
     const bestMatch = scoredElements[0].element;
-    console.log('Best matching element:', bestMatch, 'with score:', scoredElements[0].score);
     return bestMatch;
   }
   
   // Fallback
-  console.log('No good match found, using fallback');
   return matchingElements[0] || elements[0];
 };
 
 /**
  * Helper function to find the nearest parent with an ID attribute
  */
-const findNearestParentWithId = (element: Element): Element | null => {
-  let current: Element | null = element;
+const findNearestParentWithId = (element: XmlDomElement): XmlDomElement | null => {
+  let current: XmlDomElement | null = element;
   
   while (current) {
-    if (current.id) {
+    if (current.getAttribute('id')) {
       return current;
     }
-    current = current.parentElement;
+    current = current.parentElement as XmlDomElement | null;
   }
   
   return null;
 };
 
 /**
- * Helper function to get a simple path string for an element (for debugging)
- */
-const getElementPath = (element: Element): string => {
-  const parts: string[] = [];
-  let current: Element | null = element;
-  
-  while (current) {
-    const tag = current.tagName.toLowerCase();
-    const id = current.id ? `#${current.id}` : '';
-    parts.unshift(id ? `${tag}${id}` : tag);
-    current = current.parentElement;
-  }
-  
-  return parts.join('/');
-};
-
-/**
  * Helper function to generate XPath using the simplified approach
  */
-const generateXPath = (element: Element): string => {
+const generateXPath = (element: XmlDomElement): string => {
+  if (!element) {
+    return '';
+  }
+  
   // If the element itself has an ID, just use that (most specific)
-  if (element.id) {
-    return `//*[@id="${element.id}"]`;
+  const id = element.getAttribute('id');
+  if (id) {
+    return `//*[@id="${id}"]`;
   }
   
   // Check for parent elements with ID to create a relative path
-  let current: Element | null = element;
+  let current: XmlDomElement | null = element;
   let idFound = false;
   
   while (current && !idFound) {
-    const parent: Element | null = current.parentElement;
+    const parent: XmlDomElement | null = current.parentElement as XmlDomElement | null;
     
     if (!parent) break;
     
-    if (parent.id) {
+    const parentId = parent.getAttribute('id');
+    if (parentId) {
       // Found a parent with ID, build path from here
       idFound = true;
       
       // Calculate the path from this ID to our target element
       const pathParts: string[] = [];
-      let pathCurrent: Element | null = element;
+      let pathCurrent: XmlDomElement | null = element;
       
       while (pathCurrent && pathCurrent !== parent) {
         const tagName = pathCurrent.tagName.toLowerCase();
-        const parentElement = pathCurrent.parentElement;
+        const parentElement = pathCurrent.parentElement as XmlDomElement | null;
         
         if (!parentElement) break;
         
-        const siblings = Array.from(parentElement.children)
-          .filter(child => 
-            child instanceof Element && 
-            child.tagName.toLowerCase() === tagName
-          );
+        const siblings = Array.from(parentElement.childNodes)
+          .filter(child => {
+            if (!child || child.nodeType !== 1) return false;
+            const tagNameLower = (child as XmlDomElement).tagName?.toLowerCase();
+            return tagNameLower === tagName;
+          });
         
         if (siblings.length > 1) {
           // Need position index for disambiguation
@@ -357,10 +342,10 @@ const generateXPath = (element: Element): string => {
           pathParts.unshift(`/${tagName}`);
         }
         
-        pathCurrent = pathCurrent.parentElement;
+        pathCurrent = pathCurrent.parentElement as XmlDomElement | null;
       }
       
-      return `//*[@id="${parent.id}"]${pathParts.join('')}`;
+      return `//*[@id="${parentId}"]${pathParts.join('')}`;
     }
     
     current = parent;
@@ -372,13 +357,15 @@ const generateXPath = (element: Element): string => {
   
   while (current) {
     const tagName = current.tagName.toLowerCase();
-    const parent: Element | null = current.parentElement;
+    const parent: XmlDomElement | null = current.parentElement as XmlDomElement | null;
     
     if (parent) {
       // Check if we need position index
-      const siblings = Array.from(parent.children).filter(
-        child => child instanceof Element && child.tagName.toLowerCase() === tagName
-      );
+      const siblings = Array.from(parent.childNodes).filter(child => {
+        if (!child || child.nodeType !== 1) return false;
+        const tagNameLower = (child as XmlDomElement).tagName?.toLowerCase();
+        return tagNameLower === tagName;
+      });
       
       if (siblings.length > 1) {
         const position = siblings.indexOf(current) + 1;
@@ -396,155 +383,93 @@ const generateXPath = (element: Element): string => {
   return parts.join('');
 };
 
-const ClickToXPathProvider = ({ 
-  editorInstance 
-}: { 
-  editorInstance: editor.IStandaloneCodeEditor | null 
-}) => {
-  const { content, setXPath, setXPathClickProcessing } = useEditorStore();
-  const [isCtrlOrCmdPressed, setIsCtrlOrCmdPressed] = useState(false);
-  const [worker, setWorker] = useState<Worker | null>(null);
-  const latestClickIdRef = useRef(0);
-
-  // Initialize worker on component mount
-  useEffect(() => {
-    // Create worker
-    const xpathWorker = new Worker(
-      new URL('../../workers/click-to-xpath-worker.ts', import.meta.url),
-      { type: 'module' }
-    );
-
-    // Set up message handler
-    xpathWorker.onmessage = (event) => {
-      const { id, xpath, error } = event.data;
-      
-      // Only process this result if it's from the latest click (handles race condition)
-      if (id === latestClickIdRef.current) {
-        if (xpath) {
-          setXPath(xpath);
-        } else if (error) {
-          console.warn('Error generating XPath:', error);
-        }
+/**
+ * Handle click-to-XPath requests
+ */
+const handleClickToXPath = (request: ClickRequest): { id: number; xpath: string | null; error?: string } => {
+  try {
+    // Create a temporary DOM parser to handle the XML content
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(request.content, 'text/html');
+    
+    // Try normal element detection first
+    let elementMatch = findElementAtPosition(request.clickedLine, request.column);
+    
+    // If normal detection fails, try to handle multi-line tags
+    if (!elementMatch && request.clickedLine.includes('<') && !request.clickedLine.includes('>') && request.surroundingLines) {
+      // Try to find partial tag match in the clicked line
+      const tagStartMatch = /<([a-zA-Z0-9_:-]+)([^>]*?)$/g.exec(request.clickedLine);
+      if (tagStartMatch) {
+        const tagName = tagStartMatch[1];
+        const partialAttrs = tagStartMatch[2];
         
-        // End loading state when processing is complete
-        setXPathClickProcessing(false);
-      }
-    };
-
-    setWorker(xpathWorker);
-
-    // Clean up worker on component unmount
-    return () => {
-      xpathWorker.terminate();
-    };
-  }, [setXPath, setXPathClickProcessing]);
-
-  // Setup keyboard event listeners for Ctrl/Cmd key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        setIsCtrlOrCmdPressed(true);
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control' || e.key === 'Meta') {
-        setIsCtrlOrCmdPressed(false);
-      }
-    };
-
-    // Add event listeners for key detection
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    // Clean up event listeners
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
-
-  // Setup click handler when editor instance changes
-  useEffect(() => {
-    if (!editorInstance || !content || !worker) return;
-
-    // Register click handler
-    const clickDisposable = editorInstance.onMouseDown((e) => {
-      // Only process clicks when Ctrl/Cmd is pressed
-      if (e.target.position && isCtrlOrCmdPressed && e.event.leftButton) {
-        e.event.preventDefault(); // Prevent default editor click behavior
+        // Try to find complete tag in combined lines
+        const fullTagRegex = new RegExp(`<${tagName}[^>]*?>`, 'g');
+        const fullTagMatch = fullTagRegex.exec(request.surroundingLines);
         
-        const { lineNumber, column } = e.target.position;
-        
-        try {
-          // Set loading state to true when starting the process
-          setXPathClickProcessing(true);
+        if (fullTagMatch) {
+          elementMatch = findElementAtPosition(fullTagMatch[0], fullTagMatch[0].indexOf(' ') + 1);
+        } else {
+          // Extract attributes from the partial tag
+          const attributes: Record<string, string> = {};
           
-          // Get the model and clicked line
-          const model = editorInstance.getModel();
-          if (!model) {
-            setXPathClickProcessing(false);
-            return;
+          // Process partial attributes
+          const attrRegex = /([a-zA-Z0-9_:-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\s>]*))?)?/g;
+          let attrMatch;
+          
+          while ((attrMatch = attrRegex.exec(partialAttrs)) !== null) {
+            if (attrMatch[1]) {
+              const value = attrMatch[2] || attrMatch[3] || attrMatch[4] || '';
+              attributes[attrMatch[1]] = value;
+            }
           }
           
-          // Get the clicked line and calculate approximate position
-          const clickedLine = model.getLineContent(lineNumber);
-          const approximatePosition = calculateElementPosition(model, lineNumber, column);
-          
-          // For multi-line tag support, get surrounding lines
-          const startLine = Math.max(1, lineNumber - 2);
-          const endLine = Math.min(model.getLineCount(), lineNumber + 3);
-          let surroundingLines = '';
-          
-          for (let i = startLine; i <= endLine; i++) {
-            surroundingLines += model.getLineContent(i) + ' ';
-          }
-          
-          // Increment click ID to track the latest click
-          latestClickIdRef.current++;
-          
-          // Send request to worker
-          worker.postMessage({
-            id: latestClickIdRef.current,
-            content,
-            lineNumber,
-            column,
-            clickedLine,
-            approximatePosition,
-            surroundingLines
-          });
-        } catch (error) {
-          console.error('Error processing click:', error);
-          // Make sure to reset loading state on error
-          setXPathClickProcessing(false);
+          // Use partial info to create elementMatch
+          elementMatch = { tagName, attributes, startIndex: -1, endIndex: -1 };
         }
       }
-    });
-
-    return () => {
-      clickDisposable.dispose();
-    };
-  }, [editorInstance, content, isCtrlOrCmdPressed, setXPath, worker, setXPathClickProcessing]);
-
-  // Add a cursor style to indicate XPath selection mode is active
-  useEffect(() => {
-    if (!editorInstance) return;
-    
-    const editorElement = editorInstance.getDomNode();
-    if (!editorElement) return;
-    
-    if (isCtrlOrCmdPressed) {
-      editorElement.style.cursor = 'pointer';
-    } else {
-      editorElement.style.cursor = 'text';
     }
     
-    return () => {
-      editorElement.style.cursor = 'text';
+    if (elementMatch) {
+      const { tagName, attributes } = elementMatch;
+      
+      // Try to find the element in the parsed DOM using source position info
+      const elementInDoc = findElementInDocument(
+        xmlDoc, 
+        tagName, 
+        attributes, 
+        request.content, 
+        request.approximatePosition
+      );
+      
+      if (elementInDoc) {
+        // Generate XPath with improved approach
+        const xpath = generateXPath(elementInDoc);
+        return { id: request.id, xpath };
+      } else {
+        return { id: request.id, xpath: null, error: 'No element found in document for clicked position' };
+      }
+    } else {
+      return { id: request.id, xpath: null, error: 'No element found at the clicked position' };
+    }
+  } catch (error: any) {
+    return { 
+      id: request.id, 
+      xpath: null, 
+      error: error.message || 'Unknown error generating XPath' 
     };
-  }, [editorInstance, isCtrlOrCmdPressed]);
-
-  return null;
+  }
 };
 
-export default ClickToXPathProvider; 
+// Worker message handler
+self.onmessage = (event: MessageEvent) => {
+  const request = event.data as ClickRequest;
+  
+  if (request) {
+    // Process the click request
+    const result = handleClickToXPath(request);
+    
+    // Send result back to main thread
+    self.postMessage(result);
+  }
+}; 

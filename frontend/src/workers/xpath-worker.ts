@@ -376,8 +376,7 @@ function evaluateXPath(
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   // Define namespace resolver function
   const namespaceResolver = (prefix: string): string | null => {
-    // Return HTML namespace for all prefixes for better compatibility
-    return HTML_NS;
+    return (!prefix || prefix === 'html') ? HTML_NS : null;
   };
 
   // Parse the content to a DOM document
