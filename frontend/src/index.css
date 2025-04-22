@@ -119,3 +119,58 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* XPath match highlight styles */
+.xpath-match-highlight {
+  background-color: rgba(37, 99, 235, 0.4) !important;
+  border: 2px solid rgba(37, 99, 235, 0.8) !important;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3) !important;
+  border-radius: 3px !important;
+  font-weight: bold !important;
+  color: inherit !important;
+  padding: 1px !important;
+  margin: -1px !important;
+  cursor: pointer !important;
+}
+
+.xpath-match-highlight-line {
+  background-color: rgba(37, 99, 235, 0.15) !important;
+  border-left: 4px solid rgba(37, 99, 235, 0.8) !important;
+}
+
+.xpath-match-secondary {
+  background-color: rgba(107, 114, 128, 0.25) !important;
+  border: 1px solid rgba(107, 114, 128, 0.6) !important;
+  border-radius: 2px !important;
+  color: inherit !important;
+  padding: 1px !important;
+  margin: -1px !important;
+  cursor: pointer !important;
+}
+
+.xpath-match-secondary-line {
+  background-color: rgba(107, 114, 128, 0.1) !important;
+  border-left: 2px solid rgba(107, 114, 128, 0.6) !important;
+}
+
+/* Animation for new matches */
+@keyframes highlight-pulse {
+  0% { background-color: rgba(37, 99, 235, 0.6); }
+  50% { background-color: rgba(37, 99, 235, 0.4); }
+  100% { background-color: rgba(37, 99, 235, 0.6); }
+}
+
+.xpath-match-highlight {
+  animation: highlight-pulse 2s ease-in-out 2;
+}
+
+/* Animation for secondary matches to draw attention to all matches */
+@keyframes secondary-pulse {
+  0% { background-color: rgba(107, 114, 128, 0.25); }
+  50% { background-color: rgba(107, 114, 128, 0.35); }
+  100% { background-color: rgba(107, 114, 128, 0.25); }
+}
+
+.xpath-match-secondary {
+  animation: secondary-pulse 3s ease-in-out infinite;
+}

@@ -25,6 +25,8 @@ const SourceEditor = () => {
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const openFileRef = useRef<HTMLButtonElement>(null);
   const [formatPerformance, setFormatPerformance] = useState<{time: number, size: number} | null>(null);
+  // Track decorations to clear them before adding new ones
+  const decorationsRef = useRef<string[]>([]);
 
   /**
    * Handle editor mount
@@ -191,22 +193,95 @@ const SourceEditor = () => {
    * Highlight results in the editor
    */
   useEffect(() => {
-    if (editorInstance && results.length > 0 && selectedResultIndex !== null) {
-      const result = results[selectedResultIndex];
+    if (editorInstance && results.length > 0) {
       const model = editorInstance.getModel();
       
-      if (result.startOffset && result.endOffset && model) {
-        const start = model.getPositionAt(result.startOffset);
-        const end = model.getPositionAt(result.endOffset);
-        
-        editorInstance.revealPositionInCenter(start);
-        
-        editorInstance.setSelection({
-          startLineNumber: start.lineNumber,
-          startColumn: start.column,
-          endLineNumber: end.lineNumber,
-          endColumn: end.column
+      if (model) {
+        // Clear previous decorations
+        if (decorationsRef.current.length > 0) {
+          decorationsRef.current = editorInstance.deltaDecorations(decorationsRef.current, []);
+        }
+
+        // Prepare all decorations
+        const allDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+        let selectedMatchRange: monaco.Range | null = null;
+
+        // Create decorations for all matches first with default styling
+        results.forEach((match, index) => {
+          if (match.startOffset !== undefined && match.endOffset !== undefined &&
+              match.startOffset >= 0 && match.endOffset > match.startOffset) {
+            
+            // Ensure offsets are within valid range
+            const safeStartOffset = Math.min(match.startOffset, model.getValue().length - 1);
+            const safeEndOffset = Math.min(match.endOffset, model.getValue().length);
+            
+            try {
+              const matchStart = model.getPositionAt(safeStartOffset);
+              const matchEnd = model.getPositionAt(safeEndOffset);
+              
+              // Determine if this is the selected match
+              const isSelected = index === selectedResultIndex;
+              
+              // Create the range object
+              const matchRange = new monaco.Range(
+                matchStart.lineNumber,
+                matchStart.column,
+                matchEnd.lineNumber,
+                matchEnd.column
+              );
+              
+              // Save selected match range for scrolling
+              if (isSelected) {
+                selectedMatchRange = matchRange;
+              }
+              
+              // Create the decoration
+              const decoration = {
+                range: matchRange,
+                options: {
+                  inlineClassName: isSelected ? 'xpath-match-highlight' : 'xpath-match-secondary',
+                  className: isSelected ? 'xpath-match-highlight-line' : 'xpath-match-secondary-line',
+                  isWholeLine: false,
+                  overviewRuler: {
+                    color: isSelected ? '#2563eb' : '#9ca3af',
+                    position: monaco.editor.OverviewRulerLane.Center
+                  },
+                  minimap: {
+                    color: isSelected ? '#2563eb' : '#9ca3af',
+                    position: monaco.editor.MinimapPosition.Inline
+                  },
+                  zIndex: isSelected ? 10 : 5
+                }
+              };
+              
+              // Add to all decorations list
+              allDecorations.push(decoration);
+            } catch (err) {
+              console.error('Error creating decoration for match:', index, err);
+            }
+          }
         });
+
+        // Apply all decorations at once
+        if (allDecorations.length > 0) {
+          console.log(`Applying ${allDecorations.length} decorations for ${results.length} matches`);
+          decorationsRef.current = editorInstance.deltaDecorations([], allDecorations);
+          
+          // Scroll to selected match if available
+          if (selectedMatchRange && selectedResultIndex !== null) {
+            // Ensure we're using a small delay for the reveal to allow decorations to apply first
+            setTimeout(() => {
+              editorInstance.revealRangeInCenterIfOutsideViewport(selectedMatchRange!);
+              
+              // Log which element is being focused
+              console.log('Focused on element:', {
+                index: selectedResultIndex,
+                value: results[selectedResultIndex]?.value.substring(0, 100) + 
+                      (results[selectedResultIndex]?.value.length > 100 ? '...' : '')
+              });
+            }, 50);
+          }
+        }
       }
     }
   }, [results, selectedResultIndex, editorInstance]);
