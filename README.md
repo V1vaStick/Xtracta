@@ -53,7 +53,7 @@
 
 ## Live Demo
 
-Try Xtracta now at [xtracta.dev](https://xtracta.dev)
+Try Xtracta now at [https://xtracta.vercel.app/](https://xtracta.vercel.app/)
 
 ## Quick Start
 
