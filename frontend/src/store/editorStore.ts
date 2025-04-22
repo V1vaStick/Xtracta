@@ -35,6 +35,8 @@ interface EditorState {
   // Loading states
   isEvaluating: boolean;
   setIsEvaluating: (isEvaluating: boolean) => void;
+  isXPathClickProcessing: boolean;
+  setXPathClickProcessing: (isProcessing: boolean) => void;
   
   // Errors
   error: string | null;
@@ -75,6 +77,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   // Loading states
   isEvaluating: false,
   setIsEvaluating: (isEvaluating) => set({ isEvaluating }),
+  isXPathClickProcessing: false,
+  setXPathClickProcessing: (isProcessing) => set({ isXPathClickProcessing: isProcessing }),
   
   // Errors
   error: null,

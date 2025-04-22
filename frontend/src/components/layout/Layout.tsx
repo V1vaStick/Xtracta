@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import Header from './Header';
 import Footer from './Footer';
+import XPathClickLoadingIndicator from '../editor/XPathClickLoadingIndicator';
 
 /**
  * Main layout component for the application
@@ -17,6 +18,7 @@ export default function Layout({ children }: LayoutProps) {
         {children}
       </main>
       <Footer />
+      <XPathClickLoadingIndicator />
     </div>
   );
 } 
