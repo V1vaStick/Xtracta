@@ -1,3 +1,4 @@
+import { SpeedInsights } from "@vercel/speed-insights/react"
 import Layout from './components/layout/Layout';
 import SourceEditor from './components/editor/SourceEditor';
 import XPathInput from './components/xpath/XPathInput';
@@ -19,6 +20,7 @@ function App() {
           <SourceEditor />
         </div>
       </div>
+      <SpeedInsights />
     </Layout>
   );
 }
