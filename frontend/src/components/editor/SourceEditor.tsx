@@ -32,6 +32,14 @@ const SourceEditor = () => {
   // Track Ctrl/Cmd key state for XPath tooltip
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const { theme } = useTheme();
+  
+  // Editor configuration state
+  const [editorConfig, setEditorConfig] = useState({
+    wordWrap: 'off',
+    lineNumbers: 'on',
+    minimap: false
+  });
+  const [showConfigPopup, setShowConfigPopup] = useState(false);
 
   /**
    * Set up key event listeners for Ctrl/Cmd key
@@ -59,6 +67,19 @@ const SourceEditor = () => {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+  
+  /**
+   * Apply editor configuration
+   */
+  useEffect(() => {
+    if (editorInstance) {
+      editorInstance.updateOptions({
+        wordWrap: editorConfig.wordWrap as 'off' | 'on' | 'wordWrapColumn' | 'bounded',
+        lineNumbers: editorConfig.lineNumbers as 'on' | 'off' | 'relative' | 'interval' | ((lineNumber: number) => string),
+        minimap: { enabled: editorConfig.minimap }
+      });
+    }
+  }, [editorConfig, editorInstance]);
 
   /**
    * Handle editor mount
@@ -394,6 +415,40 @@ const SourceEditor = () => {
     }
   }, [setContent]);
 
+  /**
+   * Toggle editor configuration options
+   */
+  const toggleEditorConfig = (key: keyof typeof editorConfig, value: any) => {
+    setEditorConfig(prevConfig => ({
+      ...prevConfig,
+      [key]: value
+    }));
+  };
+  
+  /**
+   * Close the config popup when clicking outside
+   */
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Check if the click was on the config button (don't close if it was)
+      if (target.closest('.config-button')) {
+        return;
+      }
+      
+      // If the popup is open and the click was outside the popup, close it
+      if (showConfigPopup && !target.closest('.config-popup')) {
+        setShowConfigPopup(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showConfigPopup]);
+
   return (
     <div className="relative h-full flex flex-col rounded-2xl p-6 shadow-md border source-container overflow-hidden w-full transition-colors duration-200"
          style={{ 
@@ -404,6 +459,29 @@ const SourceEditor = () => {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold flex-shrink-0" style={{ color: 'hsl(var(--foreground))' }}>Source Code</h2>
         <div className="flex items-center space-x-2">
+          <button
+            className="config-button p-2 rounded-md transition-colors"
+            onClick={() => setShowConfigPopup(!showConfigPopup)}
+            title="Editor Settings"
+            style={{ 
+              backgroundColor: showConfigPopup ? 'hsl(var(--accent))' : 'transparent',
+              color: 'hsl(var(--muted-foreground))'
+            }}
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="h-5 w-5"
+            >
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
           <button
             ref={openFileRef}
             onClick={handleOpenFile}
@@ -424,9 +502,66 @@ const SourceEditor = () => {
         </div>
       </div>
       
+      {/* Editor Configuration Popup */}
+      {showConfigPopup && (
+        <div 
+          className="config-popup absolute top-16 right-6 z-20 w-64 p-4 rounded-lg shadow-lg border"
+          style={{ 
+            backgroundColor: 'hsl(var(--popover))', 
+            borderColor: 'hsl(var(--border))'
+          }}
+        >
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'hsl(var(--foreground))' }}>Editor Settings</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-sm" style={{ color: 'hsl(var(--foreground))' }}>Word Wrap</label>
+              <div className="relative inline-block w-10 h-5 rounded-full transition-colors"
+                   style={{ backgroundColor: editorConfig.wordWrap === 'on' ? 'hsl(var(--primary))' : 'hsl(var(--muted))' }}
+                   onClick={() => toggleEditorConfig('wordWrap', editorConfig.wordWrap === 'on' ? 'off' : 'on')}>
+                <span 
+                  className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full transition-transform duration-200 transform"
+                  style={{ 
+                    backgroundColor: 'white',
+                    transform: editorConfig.wordWrap === 'on' ? 'translateX(20px)' : 'translateX(0)'
+                  }}
+                ></span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <label className="text-sm" style={{ color: 'hsl(var(--foreground))' }}>Line Numbers</label>
+              <div className="relative inline-block w-10 h-5 rounded-full transition-colors"
+                   style={{ backgroundColor: editorConfig.lineNumbers === 'on' ? 'hsl(var(--primary))' : 'hsl(var(--muted))' }}
+                   onClick={() => toggleEditorConfig('lineNumbers', editorConfig.lineNumbers === 'on' ? 'off' : 'on')}>
+                <span 
+                  className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full transition-transform duration-200 transform"
+                  style={{ 
+                    backgroundColor: 'white',
+                    transform: editorConfig.lineNumbers === 'on' ? 'translateX(20px)' : 'translateX(0)'
+                  }}
+                ></span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <label className="text-sm" style={{ color: 'hsl(var(--foreground))' }}>Minimap</label>
+              <div className="relative inline-block w-10 h-5 rounded-full transition-colors"
+                   style={{ backgroundColor: editorConfig.minimap ? 'hsl(var(--primary))' : 'hsl(var(--muted))' }}
+                   onClick={() => toggleEditorConfig('minimap', !editorConfig.minimap)}>
+                <span 
+                  className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full transition-transform duration-200 transform"
+                  style={{ 
+                    backgroundColor: 'white',
+                    transform: editorConfig.minimap ? 'translateX(20px)' : 'translateX(0)'
+                  }}
+                ></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* XPath generation tooltip/indicator */}
       <div className={`
-        absolute top-6 right-6 z-10 py-1 px-3 rounded-full text-sm 
+        absolute top-20 right-6 z-10 py-1 px-3 rounded-full text-sm 
         transition-all duration-300 flex items-center
         ${isCtrlPressed ? 'opacity-100' : 'opacity-0'}
       `} style={{ 
@@ -450,14 +585,14 @@ const SourceEditor = () => {
           }}
           onMount={handleEditorDidMount}
           options={{
-            minimap: { enabled: false },
+            minimap: { enabled: editorConfig.minimap },
             scrollBeyondLastLine: false,
             smoothScrolling: true,
             cursorBlinking: 'smooth',
-            wordWrap: 'on',
+            wordWrap: editorConfig.wordWrap as 'off' | 'on' | 'wordWrapColumn' | 'bounded',
             wrappingIndent: 'indent',
             automaticLayout: true,
-            lineNumbers: 'on',
+            lineNumbers: editorConfig.lineNumbers as 'on' | 'off',
             glyphMargin: false,
             renderWhitespace: 'none',
             folding: true,
@@ -465,6 +600,7 @@ const SourceEditor = () => {
             formatOnPaste: true,
             largeFileOptimizations: true,
             occurrencesHighlight: 'off',
+            wrappingStrategy: 'advanced',
           }}
         />
         <ClickToXPathProvider editorInstance={editorInstance} />

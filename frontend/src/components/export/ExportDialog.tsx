@@ -139,7 +139,7 @@ const ExportDialog = ({ isOpen, onClose }: ExportDialogProps) => {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-background p-6 rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-background p-6 rounded-lg shadow-xl w-full max-w-md" style={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', borderColor: 'hsl(var(--border))' }}>
         <h2 className="text-xl font-bold mb-4">Export Results</h2>
         
         {/* Show error if no results */}
