@@ -5,7 +5,7 @@ import { useEditorStore } from '../../store/editorStore';
 /**
  * Helper function to find element at a specific position in a line
  */
-const findElementAtPosition = (line: string, column: number): { tagName: string; attributes: Record<string, string> } | null => {
+const findElementAtPosition = (line: string, column: number): { tagName: string; attributes: Record<string, string>; startIndex: number; endIndex: number } | null => {
   // Improved regex to better capture HTML/XML tags, including self-closing tags and tags with complex attributes
   const tagRegex = /<([a-zA-Z0-9_:-]+)([^>]*?)(\/?)>/g;
   let match;
@@ -32,7 +32,7 @@ const findElementAtPosition = (line: string, column: number): { tagName: string;
       }
       
       console.log('Found element at position:', { tagName, attributes, start: startIndex, end: endIndex });
-      return { tagName, attributes };
+      return { tagName, attributes, startIndex, endIndex };
     }
   }
   
@@ -45,7 +45,7 @@ const findElementAtPosition = (line: string, column: number): { tagName: string;
     if (column >= startIndex && column <= endIndex) {
       const tagName = match[1];
       console.log('Found closing tag:', { tagName, start: startIndex, end: endIndex });
-      return { tagName, attributes: {} };
+      return { tagName, attributes: {}, startIndex, endIndex };
     }
   }
   
@@ -54,93 +54,261 @@ const findElementAtPosition = (line: string, column: number): { tagName: string;
 };
 
 /**
- * Helper function to find element in parsed DOM
+ * Helper function to calculate the approximate position of an element in the original source
  */
-const findElementInDocument = (doc: Document, tagName: string, attributes: Record<string, string>): Element | null => {
-  console.log('Finding element in document:', { tagName, attributes });
+const calculateElementPosition = (model: editor.ITextModel, lineNumber: number, column: number): number => {
+  let position = 0;
+  
+  // Add up lengths of all previous lines
+  for (let i = 1; i < lineNumber; i++) {
+    position += model.getLineContent(i).length + 1; // +1 for newline
+  }
+  
+  // Add column position in current line
+  position += column;
+  
+  return position;
+};
+
+/**
+ * Helper function to find element in parsed DOM that matches the clicked location in source
+ */
+const findElementInDocument = (
+  doc: Document, 
+  tagName: string, 
+  attributes: Record<string, string>,
+  sourceContent: string,
+  approximateSourcePosition: number
+): Element | null => {
+  console.log('Finding element in document:', { tagName, attributes, approximateSourcePosition });
   
   // First try to find by ID if available
   if (attributes.id) {
     const elementById = doc.getElementById(attributes.id);
-    if (elementById) {
+    if (elementById && elementById.tagName.toLowerCase() === tagName.toLowerCase()) {
       console.log('Found element by ID:', attributes.id, elementById);
       return elementById;
     }
   }
   
-  // Try data-x-bind if available as it's often unique
-  if (attributes['data-x-bind']) {
-    const selector = `[data-x-bind="${attributes['data-x-bind']}"]`;
-    const elementByDataBind = doc.querySelector(selector);
-    if (elementByDataBind) {
-      console.log('Found element by data-x-bind:', selector, elementByDataBind);
-      return elementByDataBind;
-    }
-  }
+  // Extract section of source content around click position for context matching
+  const contextStart = Math.max(0, approximateSourcePosition - 500);
+  const contextEnd = Math.min(sourceContent.length, approximateSourcePosition + 500);
+  const contextWindow = sourceContent.substring(contextStart, contextEnd).toLowerCase();
   
   // Get all elements of this tag type
-  const elements = doc.getElementsByTagName(tagName);
+  const elements = Array.from(doc.getElementsByTagName(tagName));
   console.log(`Found ${elements.length} potential ${tagName} elements`);
   
-  // First try exact attribute matching
-  for (let i = 0; i < elements.length; i++) {
-    const element = elements[i];
-    let match = true;
-    
-    // Check if all attributes match
-    for (const [key, value] of Object.entries(attributes)) {
-      if (element.getAttribute(key) !== value) {
-        match = false;
-        break;
-      }
-    }
-    
-    if (match) {
-      console.log('Found exact matching element:', element);
-      return element;
-    }
+  if (elements.length === 0) {
+    return null;
   }
   
-  // If no exact match, try partial attribute matching as a fallback
-  // This helps with attributes that have dynamic parts like data-x-bind="ChapterItem(index)"
-  for (let i = 0; i < elements.length; i++) {
-    const element = elements[i];
+  // If there's only one element of this type, use it
+  if (elements.length === 1) {
+    return elements[0];
+  }
+  
+  // Try to match by attributes first
+  const matchingElements = elements.filter(element => {
     let matchCount = 0;
     let totalAttributes = 0;
     
     for (const [key, value] of Object.entries(attributes)) {
-      totalAttributes++;
-      const attrValue = element.getAttribute(key);
-      
-      // For data-x-bind attributes, check if the base function name matches
-      if (key === 'data-x-bind' && attrValue && value) {
-        // Extract function name before parentheses
-        const funcNamePattern = /^([^\(]+)/;
-        const expectedMatch = value.match(funcNamePattern);
-        const actualMatch = attrValue.match(funcNamePattern);
-        
-        if (expectedMatch && actualMatch && expectedMatch[1] === actualMatch[1]) {
+      if (value) { // Only check non-empty attributes
+        totalAttributes++;
+        if (element.getAttribute(key) === value) {
           matchCount++;
-          continue;
         }
-      }
-      
-      // For other attributes, direct match or contained match
-      if (attrValue === value || (attrValue && value && attrValue.includes(value))) {
-        matchCount++;
       }
     }
     
-    // If most attributes match, use this element
-    if (totalAttributes > 0 && matchCount > 0 && (matchCount / totalAttributes) > 0.5) {
-      console.log('Found partial matching element:', element, 
-        `(matched ${matchCount}/${totalAttributes} attributes)`);
-      return element;
-    }
+    // If we have attributes to match and most match, keep this element
+    return totalAttributes > 0 ? (matchCount / totalAttributes) > 0.5 : true;
+  });
+  
+  if (matchingElements.length === 1) {
+    console.log('Found unique element by attributes:', matchingElements[0]);
+    return matchingElements[0];
   }
   
-  console.log('No matching element found in document');
+  // Score each element based on multiple criteria
+  type ScoredElement = { element: Element; score: number };
+  const scoredElements: ScoredElement[] = [];
+  
+  // Use the selection of elements we've filtered down to, or all of them if we have no filtered set
+  const candidateElements = matchingElements.length > 0 ? matchingElements : elements;
+  
+  for (const element of candidateElements) {
+    let score = 0;
+    
+    // 1. Build the ancestral path to help with identification
+    const ancestorPath: string[] = [];
+    let current: Element | null = element;
+    
+    while (current) {
+      // Get tag and class names for better context
+      const tag = current.tagName.toLowerCase();
+      
+      // Add class for more specific matching if available
+      const className = current.getAttribute('class');
+      ancestorPath.unshift(className ? `${tag}.${className}` : tag);
+      
+      // Include content for text-bearing elements
+      const textContent = current.textContent?.trim().slice(0, 20);
+      if (textContent && textContent.length > 0) {
+        ancestorPath[0] += `:contains("${textContent}")`;
+      }
+      
+      current = current.parentElement;
+    }
+    
+    // 2. Create a full context path from the ancestry
+    const fullPath = ancestorPath.join('/');
+    
+    // 3. Check for specific contexts that could help disambiguate
+    const isInSidebar = fullPath.includes('sidebar') || 
+                         fullPath.includes('side-bar') || 
+                         ancestorPath.some(p => p.includes('sidebar'));
+    
+    const isInNav = fullPath.includes('nav') || 
+                    fullPath.includes('navigation') || 
+                    ancestorPath.some(p => p.includes('nav'));
+    
+    const isInHeader = fullPath.includes('header') || 
+                       ancestorPath.some(p => p.includes('header'));
+    
+    const isInFooter = fullPath.includes('footer') || 
+                       ancestorPath.some(p => p.includes('footer'));
+                     
+    const isInContent = fullPath.includes('content') || 
+                        fullPath.includes('main') || 
+                        ancestorPath.some(p => p.includes('content') || p.includes('main'));
+    
+    // 4. Evaluate the position context in the source document to find the best match
+    const pathStr = ancestorPath.slice(Math.max(0, ancestorPath.length - 4)).join('');
+    const normalizedPath = pathStr.replace(/[^a-z0-9]/g, '').toLowerCase();
+    
+    // Search for this path pattern in the context window
+    let pathFound = false;
+    let distanceToClick = Number.MAX_SAFE_INTEGER;
+    
+    if (normalizedPath.length > 0) {
+      // Try to find the pattern in the context window
+      const pathPos = contextWindow.indexOf(normalizedPath);
+      if (pathPos !== -1) {
+        pathFound = true;
+        // Calculate distance to clicked position
+        distanceToClick = Math.abs((pathPos + contextStart) - approximateSourcePosition);
+      }
+    }
+    
+    // 5. Score this element based on all factors
+    
+    // Context score - based on meaningful container elements
+    if (contextWindow.includes('sidebar') && isInSidebar) {
+      score += 20; // Strongly prioritize sidebar elements if the context includes sidebar
+    } else if (contextWindow.includes('related') && isInSidebar) {
+      score += 15; // Related links context hints at sidebar
+    } else if (contextWindow.includes('nav') && isInNav) {
+      score += 10;
+    } else if (contextWindow.includes('header') && isInHeader) {
+      score += 10;
+    } else if (contextWindow.includes('content') && isInContent) {
+      score += 15;
+    }
+    
+    // Direct element context
+    const elementOuterHtml = element.outerHTML.toLowerCase();
+    const immediateContextRegex = new RegExp(`<[^>]*${tagName.toLowerCase()}[^>]*>([^<]{0,50})`, 'i');
+    const immediateMatch = immediateContextRegex.exec(contextWindow);
+    
+    if (immediateMatch && elementOuterHtml.includes(immediateMatch[1])) {
+      score += 30; // Very strong signal if immediate text content matches
+    }
+    
+    // Distance-based score - closer elements get higher scores
+    if (pathFound) {
+      // Logarithmic scoring - lower distance is better
+      const distanceScore = 100 - Math.min(100, Math.log(distanceToClick + 1) * 10);
+      score += distanceScore;
+    } else {
+      // If path not found, heavily penalize
+      score -= 50;
+    }
+    
+    // Ancestors with IDs are more reliable indicators
+    if (ancestorPath.some(p => p.includes('#'))) {
+      score += 15;
+    }
+    
+    // Nearest ancestor with an ID is likely the most relevant container
+    const nearestParentWithId = findNearestParentWithId(element);
+    if (nearestParentWithId && nearestParentWithId.id === 'content') {
+      score += 25; // Strongly prefer elements in the content area
+    } else if (nearestParentWithId && nearestParentWithId.id === 'root') {
+      score += 5; // Root is less specific but still useful
+    }
+    
+    // Content areas with links are more likely to be the sidebar
+    if (isInSidebar && fullPath.includes('li') && fullPath.includes('a')) {
+      score += 10;
+    }
+    
+    scoredElements.push({ element, score });
+  }
+  
+  // Sort by score descending and get the best match
+  scoredElements.sort((a, b) => b.score - a.score);
+  
+  if (scoredElements.length > 0) {
+    console.log('Element scores:', scoredElements.map(e => ({ 
+      element: e.element.tagName, 
+      score: e.score, 
+      path: getElementPath(e.element)
+    })));
+    
+    const bestMatch = scoredElements[0].element;
+    console.log('Best matching element:', bestMatch, 'with score:', scoredElements[0].score);
+    return bestMatch;
+  }
+  
+  // Fallback
+  console.log('No good match found, using fallback');
+  return matchingElements[0] || elements[0];
+};
+
+/**
+ * Helper function to find the nearest parent with an ID attribute
+ */
+const findNearestParentWithId = (element: Element): Element | null => {
+  let current: Element | null = element;
+  
+  while (current) {
+    if (current.id) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  
   return null;
+};
+
+/**
+ * Helper function to get a simple path string for an element (for debugging)
+ */
+const getElementPath = (element: Element): string => {
+  const parts: string[] = [];
+  let current: Element | null = element;
+  
+  while (current) {
+    const tag = current.tagName.toLowerCase();
+    const id = current.id ? `#${current.id}` : '';
+    parts.unshift(id ? `${tag}${id}` : tag);
+    current = current.parentElement;
+  }
+  
+  return parts.join('/');
 };
 
 /**
@@ -151,49 +319,80 @@ const generateXPath = (element: Element): string => {
   if (element.id) {
     return `//*[@id="${element.id}"]`;
   }
-
-  // Build parts of the path as we traverse up
-  const parts: string[] = [];
-  let current: Element | null = element;
   
-  // Start with the current element
-  while (current) {
-    // Get the element's tag name
-    const tagName = current.tagName.toLowerCase();
+  // Check for parent elements with ID to create a relative path
+  let current: Element | null = element;
+  let idFound = false;
+  
+  while (current && !idFound) {
+    const parent: Element | null = current.parentElement;
     
-    // If we find an element with ID, we can create a relative path from here
-    if (current.id && current !== element) {
-      // We found an ancestor with ID, so build relative path from here
-      return `//*[@id="${current.id}"]${parts.join('')}`;
+    if (!parent) break;
+    
+    if (parent.id) {
+      // Found a parent with ID, build path from here
+      idFound = true;
+      
+      // Calculate the path from this ID to our target element
+      const pathParts: string[] = [];
+      let pathCurrent: Element | null = element;
+      
+      while (pathCurrent && pathCurrent !== parent) {
+        const tagName = pathCurrent.tagName.toLowerCase();
+        const parentElement = pathCurrent.parentElement;
+        
+        if (!parentElement) break;
+        
+        const siblings = Array.from(parentElement.children)
+          .filter(child => 
+            child instanceof Element && 
+            child.tagName.toLowerCase() === tagName
+          );
+        
+        if (siblings.length > 1) {
+          // Need position index for disambiguation
+          const position = siblings.indexOf(pathCurrent) + 1;
+          pathParts.unshift(`/${tagName}[${position}]`);
+        } else {
+          pathParts.unshift(`/${tagName}`);
+        }
+        
+        pathCurrent = pathCurrent.parentElement;
+      }
+      
+      return `//*[@id="${parent.id}"]${pathParts.join('')}`;
     }
     
-    // Save parent before using it to avoid the linter error
+    current = parent;
+  }
+  
+  // If no ID found, build absolute path
+  const parts: string[] = [];
+  current = element;
+  
+  while (current) {
+    const tagName = current.tagName.toLowerCase();
     const parent: Element | null = current.parentElement;
     
     if (parent) {
-      // Find position among siblings if there are multiple elements with same tag
+      // Check if we need position index
       const siblings = Array.from(parent.children).filter(
-        (child): child is Element => 
-          child instanceof Element && child.tagName.toLowerCase() === tagName
+        child => child instanceof Element && child.tagName.toLowerCase() === tagName
       );
       
       if (siblings.length > 1) {
-        // Need position index
         const position = siblings.indexOf(current) + 1;
         parts.unshift(`/${tagName}[${position}]`);
       } else {
         parts.unshift(`/${tagName}`);
       }
     } else {
-      // Root element
       parts.unshift(`/${tagName}`);
     }
     
-    // Move up to parent
     current = parent;
   }
   
-  // Return the absolute path
   return parts.join('');
 };
 
@@ -255,6 +454,9 @@ const ClickToXPathProvider = ({
           const clickedLine = model.getLineContent(lineNumber);
           console.log('Clicked line:', clickedLine);
           
+          // Calculate approximate position in source for better element matching
+          const approximatePosition = calculateElementPosition(model, lineNumber, column);
+          
           // Try normal element detection first
           let elementMatch = findElementAtPosition(clickedLine, column);
           
@@ -304,7 +506,7 @@ const ClickToXPathProvider = ({
                 }
                 
                 // Use partial info to create elementMatch
-                elementMatch = { tagName, attributes };
+                elementMatch = { tagName, attributes, startIndex: -1, endIndex: -1 };
               }
             }
           }
@@ -312,11 +514,17 @@ const ClickToXPathProvider = ({
           if (elementMatch) {
             const { tagName, attributes } = elementMatch;
             
-            // Try to find the element in the parsed DOM
-            const elementInDoc = findElementInDocument(xmlDoc, tagName, attributes);
+            // Try to find the element in the parsed DOM using source position info
+            const elementInDoc = findElementInDocument(
+              xmlDoc, 
+              tagName, 
+              attributes, 
+              content, 
+              approximatePosition
+            );
             
             if (elementInDoc) {
-              // Generate XPath with simplified approach
+              // Generate XPath with improved approach
               const xpath = generateXPath(elementInDoc);
               setXPath(xpath);
               console.log('Generated XPath:', xpath);
