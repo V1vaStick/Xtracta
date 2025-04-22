@@ -1,21 +1,12 @@
-import { useState } from 'react';
+import { useTheme } from '../../utils/ThemeProvider';
 
 /**
  * Header component for the application
  * Contains the logo, title, and theme toggle
  */
 export default function Header() {
-  const [isDarkMode, setIsDarkMode] = useState(() => 
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
-
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    
-    // Apply theme to document root
-    document.documentElement.classList.toggle('dark', newMode);
-  };
+  const { theme, toggleTheme } = useTheme();
+  const isDarkMode = theme === 'dark';
 
   return (
     <header className="bg-primary text-primary-foreground py-4 px-6 shadow-md">

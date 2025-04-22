@@ -16,6 +16,20 @@
 
       gtag('config', 'G-4X6HY67CHD');
     </script>
+    <!-- Theme initialization to prevent flash -->
+    <script>
+      // Check for stored theme or use system preference
+      const storedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = storedTheme || (prefersDark ? 'dark' : 'light');
+      
+      // Apply theme class to document element
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

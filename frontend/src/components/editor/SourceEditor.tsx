@@ -5,6 +5,7 @@ import * as monaco from 'monaco-editor';
 import { useEditorStore } from '../../store/editorStore';
 import ClickToXPathProvider from './ClickToXPathProvider';
 import { formatHtmlOrXml, fallbackFormatter, clearFormatterCache, terminateFormatterWorker } from '../../utils/formatters/html-formatter';
+import { useTheme } from '../../utils/ThemeProvider';
 
 // Define a type for editor selections to avoid importing internal monaco types
 interface EditorSelection {
@@ -30,6 +31,7 @@ const SourceEditor = () => {
   
   // Track Ctrl/Cmd key state for XPath tooltip
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+  const { theme } = useTheme();
 
   /**
    * Set up key event listeners for Ctrl/Cmd key
@@ -393,9 +395,14 @@ const SourceEditor = () => {
   }, [setContent]);
 
   return (
-    <div className="relative h-full flex flex-col rounded-2xl p-6 shadow-md source-container overflow-hidden w-full">
+    <div className="relative h-full flex flex-col rounded-2xl p-6 shadow-md border source-container overflow-hidden w-full transition-colors duration-200"
+         style={{ 
+           backgroundColor: 'hsl(var(--card))', 
+           color: 'hsl(var(--card-foreground))',
+           borderColor: 'hsl(var(--border))'
+         }}>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-foreground flex-shrink-0">Source Code</h2>
+        <h2 className="text-xl font-bold flex-shrink-0" style={{ color: 'hsl(var(--foreground))' }}>Source Code</h2>
         <div className="flex items-center space-x-2">
           <button
             ref={openFileRef}
@@ -419,10 +426,13 @@ const SourceEditor = () => {
       
       {/* XPath generation tooltip/indicator */}
       <div className={`
-        absolute top-6 right-6 z-10 bg-gray-800 text-white py-1 px-3 rounded-full text-sm 
-        transition-opacity duration-300 flex items-center
+        absolute top-6 right-6 z-10 py-1 px-3 rounded-full text-sm 
+        transition-all duration-300 flex items-center
         ${isCtrlPressed ? 'opacity-100' : 'opacity-0'}
-      `}>
+      `} style={{ 
+        backgroundColor: 'hsl(var(--muted))', 
+        color: 'hsl(var(--muted-foreground))'
+      }}>
         <span className="inline-block w-2 h-2 bg-green-500 mr-2 rounded-full"></span>
         Click any element to generate XPath
       </div>
@@ -431,7 +441,7 @@ const SourceEditor = () => {
         <Editor
           className="h-full"
           defaultLanguage="html"
-          theme="vs-light"
+          theme={theme === 'dark' ? 'vs-dark' : 'vs-light'}
           value={content}
           onChange={(value) => {
             if (value !== undefined) {

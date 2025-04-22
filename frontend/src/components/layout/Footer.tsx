@@ -4,8 +4,8 @@
  */
 export default function Footer() {
   return (
-    <footer className="bg-muted py-4 px-6 mt-2">
-      <div className="container mx-auto flex flex-col md:flex-row justify-between items-center text-muted-foreground text-sm">
+    <footer className="py-4 px-6 mt-2 transition-colors duration-200" style={{ backgroundColor: 'hsl(var(--muted))' }}>
+      <div className="container mx-auto flex flex-col md:flex-row justify-between items-center text-sm" style={{ color: 'hsl(var(--muted-foreground))' }}>
         <div>
           <p>© {new Date().getFullYear()} Xtracta - XPath Playground</p>
         </div>
@@ -14,7 +14,8 @@ export default function Footer() {
             href="https://github.com/mnhlt/xtracta" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="hover:text-primary transition-colors"
+            className="transition-colors duration-200 hover:opacity-80"
+            style={{ color: 'hsl(var(--muted-foreground))' }}
           >
             GitHub
           </a>
@@ -22,7 +23,8 @@ export default function Footer() {
             href="https://developer.mozilla.org/en-US/docs/Web/XPath" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="hover:text-primary transition-colors"
+            className="transition-colors duration-200 hover:opacity-80"
+            style={{ color: 'hsl(var(--muted-foreground))' }}
           >
             XPath Docs
           </a>

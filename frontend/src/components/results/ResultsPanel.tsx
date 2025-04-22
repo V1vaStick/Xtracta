@@ -61,8 +61,8 @@ const ResultsPanel = () => {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
-          <p className="text-muted-foreground">Evaluating XPath...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 mb-2" style={{ borderColor: 'hsl(var(--primary))' }}></div>
+          <p style={{ color: 'hsl(var(--muted-foreground))' }}>Evaluating XPath...</p>
         </div>
       </div>
     );
@@ -74,7 +74,10 @@ const ResultsPanel = () => {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="bg-destructive/10 text-destructive p-4 rounded-md max-w-md">
+        <div className="p-4 rounded-md max-w-md" style={{ 
+          backgroundColor: 'hsl(var(--destructive) / 0.1)', 
+          color: 'hsl(var(--destructive))' 
+        }}>
           <h3 className="font-medium mb-2">Error</h3>
           <p>{error}</p>
         </div>
@@ -87,7 +90,7 @@ const ResultsPanel = () => {
    */
   if (results.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
+      <div className="h-full flex items-center justify-center" style={{ color: 'hsl(var(--muted-foreground))' }}>
         <div className="max-w-md text-center">
           <p>Enter an XPath expression and click "Evaluate" to see results</p>
         </div>
@@ -104,11 +107,15 @@ const ResultsPanel = () => {
       />
       
       <div className="flex justify-between items-center mb-2 flex-shrink-0">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm" style={{ color: 'hsl(var(--muted-foreground))' }}>
           {resultsCount} {resultsCount === 1 ? 'match' : 'matches'} in {formatExecutionTime(executionTime)}
         </div>
         <button 
-          className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors flex items-center space-x-1"
+          className="px-3 py-1.5 rounded-md text-sm flex items-center space-x-1 transition-colors duration-200 hover:opacity-90"
+          style={{ 
+            backgroundColor: 'hsl(var(--primary))', 
+            color: 'hsl(var(--primary-foreground))' 
+          }}
           onClick={handleOpenExportDialog}
           disabled={results.length === 0}
         >
@@ -132,23 +139,32 @@ const ResultsPanel = () => {
         </button>
       </div>
       
-      <div className="flex-1 overflow-auto border rounded-md min-h-0">
-        <ul className="divide-y">
+      <div className="flex-1 overflow-auto rounded-md min-h-0 transition-colors duration-200 border"
+           style={{ borderColor: 'hsl(var(--border))' }}>
+        <ul className="divide-y" style={{ borderColor: 'hsl(var(--border))' }}>
           {results.map((result, index) => (
             <li 
               key={index}
               onClick={() => handleResultClick(index)}
-              className={`p-3 cursor-pointer result-item ${selectedResultIndex === index ? 'bg-secondary' : 'hover:bg-secondary/40'}`}
+              className={`p-3 cursor-pointer result-item transition-colors duration-200 ${selectedResultIndex === index ? 'bg-secondary text-secondary-foreground' : 'hover:bg-secondary/40'}`}
+              style={selectedResultIndex === index ? {
+                backgroundColor: 'hsl(var(--secondary))',
+                color: 'hsl(var(--secondary-foreground))'
+              } : undefined}
             >
               <div className="flex justify-between items-start mb-1">
-                <div className="font-mono text-xs text-primary bg-primary/10 px-1 py-0.5 rounded max-w-[90%] overflow-x-auto">
+                <div className="font-mono text-xs px-1 py-0.5 rounded max-w-[90%] overflow-x-auto" 
+                     style={{ 
+                       backgroundColor: 'hsl(var(--primary) / 0.1)', 
+                       color: 'hsl(var(--primary))' 
+                     }}>
                   {result.path}
                 </div>
-                <div className="text-xs text-muted-foreground shrink-0 ml-2">
+                <div className="text-xs shrink-0 ml-2" style={{ color: 'hsl(var(--muted-foreground))' }}>
                   #{index + 1}
                 </div>
               </div>
-              <div className="mt-1 p-2 bg-muted/30 rounded">
+              <div className="mt-1 p-2 rounded" style={{ backgroundColor: 'hsl(var(--muted) / 0.3)' }}>
                 <pre className="text-xs whitespace-pre-wrap break-all result-value">
                   {result.value}
                 </pre>

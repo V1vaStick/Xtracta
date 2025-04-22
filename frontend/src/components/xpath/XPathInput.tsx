@@ -49,8 +49,16 @@ const XPathInput = () => {
       // Use our evaluation service
       const result = await evaluateXPath(content, xpath, true);
       
+      // Map the results to match the expected format
+      const formattedResults = result.matches.map(match => ({
+        value: match.value,
+        path: match.nodeName || xpath, // Use nodeName as path or fallback to xpath
+        startOffset: match.startOffset,
+        endOffset: match.endOffset
+      }));
+      
       // Update store with results
-      setResults(result.matches, result.executionTime);
+      setResults(formattedResults, result.executionTime);
       
       // Add to history
       addItem(xpath, result.count);
@@ -110,7 +118,7 @@ const XPathInput = () => {
   return (
     <div className="relative">
       <div className="flex items-center mb-4">
-        <h2 className="text-xl font-bold text-foreground">XPath Query</h2>
+        <h2 className="text-xl font-bold" style={{ color: 'hsl(var(--foreground))' }}>XPath Query</h2>
       </div>
       <div className="flex items-center space-x-4">
         <div className="relative flex-1">
@@ -121,14 +129,20 @@ const XPathInput = () => {
             onChange={(e) => setXPath(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Enter XPath expression (e.g., //div[@class='container'])"
-            className="w-full p-3 pr-30 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 placeholder-muted-foreground"
+            className="w-full p-3 pr-30 border rounded-lg focus:outline-none focus:ring-2 transition-colors duration-200"
+            style={{ 
+              backgroundColor: 'hsl(var(--background))',
+              color: 'hsl(var(--foreground))',
+              borderColor: 'hsl(var(--input))'
+            }}
           />
           <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
             {xpath && (
               <button
                 type="button"
                 onClick={handleCopyXPath}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent"
+                className="hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
                 title="Copy XPath"
               >
                 <svg 
@@ -150,7 +164,8 @@ const XPathInput = () => {
               <button
                 type="button"
                 onClick={() => setShowHistory(!showHistory)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent"
+                className="hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
                 title="Show History"
               >
                 <svg 
@@ -172,9 +187,17 @@ const XPathInput = () => {
           {showHistory && historyItems.length > 0 && (
             <div 
               ref={historyRef}
-              className="absolute z-10 mt-2 w-full bg-popover shadow-lg rounded-lg border border-border max-h-60 overflow-auto"
+              className="absolute z-10 mt-2 w-full shadow-lg rounded-lg border max-h-60 overflow-auto"
+              style={{ 
+                backgroundColor: 'hsl(var(--popover))',
+                borderColor: 'hsl(var(--border))'
+              }}
             >
-              <div className="p-3 text-sm font-semibold text-muted-foreground border-b border-border">Query History</div>
+              <div className="p-3 text-sm font-semibold border-b"
+                   style={{ 
+                     color: 'hsl(var(--muted-foreground))',
+                     borderColor: 'hsl(var(--border))'
+                   }}>Query History</div>
               <ul>
                 {historyItems.map((item) => (
                   <li 
@@ -183,8 +206,9 @@ const XPathInput = () => {
                     className="px-4 py-3 hover:bg-accent cursor-pointer flex justify-between items-center transition-colors"
                   >
                     <span className="text-sm truncate flex-1 mr-2">{item.query}</span>
-                    <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                      <span className="bg-muted px-2 py-1 rounded-md">{item.matchCount} matches</span>
+                    <div className="flex items-center space-x-2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                      <span className="px-2 py-1 rounded-md" 
+                            style={{ backgroundColor: 'hsl(var(--muted))' }}>{item.matchCount} matches</span>
                       <span>{formatDate(item.timestamp)}</span>
                     </div>
                   </li>
@@ -195,7 +219,11 @@ const XPathInput = () => {
         </div>
         <button
           onClick={handleEvaluateXPath}
-          className="px-5 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 flex items-center space-x-2"
+          className="px-5 py-3 rounded-lg hover:opacity-90 focus:outline-none focus:ring-2 transition-colors duration-200 flex items-center space-x-2"
+          style={{ 
+            backgroundColor: 'hsl(var(--primary))',
+            color: 'hsl(var(--primary-foreground))'
+          }}
         >
           <svg 
             xmlns="http://www.w3.org/2000/svg" 
@@ -213,10 +241,30 @@ const XPathInput = () => {
           <span>Evaluate</span>
         </button>
       </div>
-      <div className="mt-3 text-xs text-muted-foreground">
-        💡 Tip: Press <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Ctrl</kbd>+<kbd className="bg-muted px-1.5 py-0.5 rounded-md border border-border">Enter</kbd> to evaluate
+      <div className="mt-3 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
+        💡 Tip: Press <kbd className="px-1.5 py-0.5 rounded-md mx-1 border transition-colors duration-200"
+                           style={{ 
+                             backgroundColor: 'hsl(var(--muted))', 
+                             color: 'hsl(var(--muted-foreground))',
+                             borderColor: 'hsl(var(--border))'
+                           }}>Ctrl</kbd>+<kbd className="px-1.5 py-0.5 rounded-md border transition-colors duration-200"
+                                              style={{ 
+                                                backgroundColor: 'hsl(var(--muted))', 
+                                                color: 'hsl(var(--muted-foreground))',
+                                                borderColor: 'hsl(var(--border))'
+                                              }}>Enter</kbd> to evaluate
         <span className="mx-2">•</span>
-        Hold <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Ctrl</kbd> or <kbd className="bg-muted px-1.5 py-0.5 rounded-md mx-1 border border-border">Cmd</kbd> and click on elements to generate a precise XPath
+        Hold <kbd className="px-1.5 py-0.5 rounded-md mx-1 border transition-colors duration-200"
+                  style={{ 
+                    backgroundColor: 'hsl(var(--muted))', 
+                    color: 'hsl(var(--muted-foreground))',
+                    borderColor: 'hsl(var(--border))'
+                  }}>Ctrl</kbd> or <kbd className="px-1.5 py-0.5 rounded-md mx-1 border transition-colors duration-200"
+                                         style={{ 
+                                           backgroundColor: 'hsl(var(--muted))', 
+                                           color: 'hsl(var(--muted-foreground))',
+                                           borderColor: 'hsl(var(--border))'
+                                         }}>Cmd</kbd> and click on elements to generate a precise XPath
       </div>
     </div>
   );
