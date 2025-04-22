@@ -18,7 +18,7 @@ interface EditorSelection {
  * Source Editor component for XML/HTML documents
  */
 const SourceEditor = () => {
-  const { content, setContent, results, selectedResultIndex } = useEditorStore();
+  const { content, setContent, results, selectedResultIndex, isXPathClickProcessing } = useEditorStore();
   const [editorInstance, setEditorInstance] = useState<monacoEditor.IStandaloneCodeEditor | null>(null);
   const [isFormatting, setIsFormatting] = useState(false);
   const [lastSelectionState, setLastSelectionState] = useState<EditorSelection | null>(null);
@@ -27,6 +27,36 @@ const SourceEditor = () => {
   const [formatPerformance, setFormatPerformance] = useState<{time: number, size: number} | null>(null);
   // Track decorations to clear them before adding new ones
   const decorationsRef = useRef<string[]>([]);
+  
+  // Track Ctrl/Cmd key state for XPath tooltip
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+
+  /**
+   * Set up key event listeners for Ctrl/Cmd key
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        setIsCtrlPressed(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlPressed(false);
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      // Remove event listeners
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   /**
    * Handle editor mount
@@ -363,128 +393,69 @@ const SourceEditor = () => {
   }, [setContent]);
 
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="relative h-full flex flex-col rounded-2xl p-6 shadow-md source-container overflow-hidden w-full">
       <div className="flex justify-between items-center mb-4">
-        <div className="flex space-x-2 items-center">
-          <h2 className="text-xl font-bold text-foreground">Input HTML/XML</h2>
-          {formatPerformance && (
-            <span className="text-xs text-muted-foreground ml-2">
-              Formatted {(formatPerformance.size / 1024).toFixed(1)}KB in {formatPerformance.time.toFixed(1)}ms
-            </span>
-          )}
-        </div>
-        <div className="flex items-center space-x-3">
+        <h2 className="text-xl font-bold text-foreground flex-shrink-0">Source Code</h2>
+        <div className="flex items-center space-x-2">
           <button
             ref={openFileRef}
             onClick={handleOpenFile}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 flex items-center space-x-2"
-            aria-label="Open File"
+            className="btn btn-sm"
+            title="Open File (Ctrl+O)"
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              className="h-5 w-5"
-              aria-hidden="true"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" x2="12" y1="15" y2="3"></line>
-            </svg>
-            <span>Open File</span>
+            Open File
           </button>
-          <button
+          <button 
             ref={formatButtonRef}
             onClick={handleFormatXml}
-            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all duration-200 flex items-center space-x-2"
-            disabled={!content || isFormatting}
-            aria-label={isFormatting ? "Formatting HTML/XML..." : "Format HTML"}
-            title="Format HTML (Ctrl+Shift+F)"
+            className="btn btn-sm"
+            disabled={isFormatting}
+            title="Format XML (Ctrl+Shift+F)"
           >
-            {isFormatting ? (
-              <>
-                <svg 
-                  className="animate-spin -ml-1 mr-2 h-5 w-5" 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  fill="none" 
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle 
-                    className="opacity-25" 
-                    cx="12" 
-                    cy="12" 
-                    r="10" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                  />
-                  <path 
-                    className="opacity-75" 
-                    fill="currentColor" 
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <span>Formatting...</span>
-              </>
-            ) : (
-              <>
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  className="h-5 w-5"
-                  aria-hidden="true"
-                >
-                  <polyline points="16 3 21 8 8 21 3 21 3 16 16 3"></polyline>
-                </svg>
-                <span>Format HTML</span>
-              </>
-            )}
+            {isFormatting ? 'Formatting...' : 'Format'}
           </button>
         </div>
       </div>
-      <div 
-        className="border border-input rounded-lg overflow-hidden h-full relative"
-        role="region"
-        aria-label="HTML/XML Editor"
-      >
+      
+      {/* XPath generation tooltip/indicator */}
+      <div className={`
+        absolute top-6 right-6 z-10 bg-gray-800 text-white py-1 px-3 rounded-full text-sm 
+        transition-opacity duration-300 flex items-center
+        ${isCtrlPressed ? 'opacity-100' : 'opacity-0'}
+      `}>
+        <span className="inline-block w-2 h-2 bg-green-500 mr-2 rounded-full"></span>
+        Click any element to generate XPath
+      </div>
+      
+      <div className="flex-1 overflow-hidden relative">
         <Editor
-          height="100%"
-          width="100%"
-          language="xml"
+          className="h-full"
+          defaultLanguage="html"
           theme="vs-light"
           value={content}
-          onChange={handleEditorChange}
+          onChange={(value) => {
+            if (value !== undefined) {
+              setContent(value);
+            }
+          }}
           onMount={handleEditorDidMount}
           options={{
-            selectOnLineNumbers: true,
-            roundedSelection: false,
             minimap: { enabled: false },
-            readOnly: false,
-            cursorStyle: 'line',
-            automaticLayout: true,
             scrollBeyondLastLine: false,
-            scrollbar: { vertical: 'visible', horizontal: 'visible' },
+            smoothScrolling: true,
+            cursorBlinking: 'smooth',
+            wordWrap: 'on',
+            wrappingIndent: 'indent',
+            automaticLayout: true,
             lineNumbers: 'on',
-            glyphMargin: true,
+            glyphMargin: false,
+            renderWhitespace: 'none',
             folding: true,
-            fontSize: 14,
-            accessibilitySupport: 'on',
-            tabIndex: 0,
-            renderIndentGuides: false,
-            renderWhitespace:   'none',
-            links:              false,
-            occurrencesHighlight: 'off'
-          } as monacoEditor.IEditorOptions}
-          aria-label="HTML/XML code editor"
+            autoIndent: 'full',
+            formatOnPaste: true,
+            largeFileOptimizations: true,
+            occurrencesHighlight: 'off',
+          }}
         />
         <ClickToXPathProvider editorInstance={editorInstance} />
       </div>
